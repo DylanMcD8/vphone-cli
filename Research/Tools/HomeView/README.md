@@ -10,6 +10,14 @@ zsh Research/Tools/HomeView/Build.zsh
 
 The outputs go to `.build/HomeViewResearchTools`, which is ignored by Git.
 
+## AirPlay video
+
+[`TVAirPlay.plist`](TVAirPlay.plist) is a guest preference override for the
+case where pairing succeeds but video leaves HomeView on its clock. Follow
+the [AirPlay findings and reversible installation steps](../../Guest/homeview_airplay.md);
+merge existing overrides and reboot the guest. This template is not installed
+by `Build.zsh` or the firmware preset automatically.
+
 ## Installing Home Modular without the gallery
 
 The Home app already contains `com.apple.Home.HomeFace`. The stalled face

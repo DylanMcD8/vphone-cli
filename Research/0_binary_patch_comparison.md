@@ -1,5 +1,13 @@
 # Patch Comparison: Regular / Development / Jailbreak / Experimental
 
+> **HomeView AirPlay presentation override (2026-10-31).** A manual, reversible
+> guest preference sets `TVAirPlay/PebbleAirPlayVideoInNowPlaying.Enabled=false`
+> under `/Library/Preferences/FeatureFlags/Domain`. After a guest reboot,
+> QuickTime video renders through the receiver's separate player instead of
+> the unsuccessful Now Playing handoff. No binary, entitlement, kernel, network,
+> patch declaration, or firmware-preset change is involved. The template is
+> opt-in and not automatically staged. See [the evidence and rollback](Guest/homeview_airplay.md).
+
 > **HomeView shader compiler and icon lookups (2026-10-30).**
 > Extend the existing HomeView-only `system-breadboard-exp-mach_lookup` with
 > `com.apple.MTLCompilerService`. The 24V514 guest logs ten connection retries

@@ -95,6 +95,14 @@ a short progress/resume note in that folder for any reboot or manual step.
    Photos, HomeKit, recognition, and Snoopy downloads may need unavailable
    hardware, account setup, content, or services.
 
+8. For AirPlay video from this Mac, read Research/Guest/homeview_airplay.md.
+   Back up existing guest feature overrides and apply the documented
+   PebbleAirPlayVideoInNowPlaying=false workaround, preserving other settings.
+   Reboot the guest and verify a fresh connection from QuickTime displays video.
+   The tested host-Mac route works with NAT; do not change the network mode
+   unnecessarily. Do not claim audio, protected content, or iPhone discovery
+   works unless separately tested.
+
 Finish with a working launcher or exact launch command, the VM/bundle paths,
 the validation results, and any remaining limitations. Keep firmware, VM disks,
 credentials, and extracted Apple assets out of Git. Continue through routine,

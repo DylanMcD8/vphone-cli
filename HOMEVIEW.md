@@ -15,6 +15,8 @@ The local additions include:
 - Device-menu date/time override and reset, backed by a guest clock API that
   preserves a ticking manual clock across periodic host sync requests.
 - Standalone Home Modular registration and wallpaper research tools.
+- A reversible AirPlay video presentation workaround; see
+  [`Research/Guest/homeview_airplay.md`](Research/Guest/homeview_airplay.md).
 
 Build the app using the existing instructions in `AGENTS.md` and `README.md`.
 The HomeView-specific findings and validation are in
