@@ -88,6 +88,7 @@ done
 
 /bin/rm -rf "$macos" "$resources"
 /bin/mkdir -p "$macos" "$guest" "$frameworks"
+"${0:a:h}/CompileHomeViewIcon.sh" "$bundle"
 /bin/rm -rf "$frameworks/VPhonePatchKit.framework"
 /bin/cp -R "$command_products/VPhonePatchKit.framework" "$frameworks/VPhonePatchKit.framework"
 /bin/cp "$TARGET_BUILD_DIR/vphone-vm" "$macos/vphone-vm"

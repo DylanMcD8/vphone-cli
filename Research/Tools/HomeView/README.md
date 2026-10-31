@@ -10,6 +10,32 @@ zsh Research/Tools/HomeView/Build.zsh
 
 The outputs go to `.build/HomeViewResearchTools`, which is ignored by Git.
 
+## Location Services
+
+`homeview-location-control` uses the native `CLLocationManager` Settings API
+with locationd’s authorization entitlement. It runs only inside the patched
+tvOS guest; it does not change this Mac’s location settings or automatically
+grant individual apps location permission.
+
+Push the built helper to `/var/tmp/homeview-location-control` with mode `755`.
+Record the original state before explicitly enabling the guest’s switch:
+
+```js
+print(proc.run('/var/tmp/homeview-location-control', ['status']));
+print(proc.run('/var/tmp/homeview-location-control', ['enable']));
+```
+
+Check exit status and `enabled: true`. Then use the emulator’s location panel,
+or call `location.set` with `{"latitude":37.3349,"longitude":-122.009,"altitude":30}`
+for a simulated Cupertino location. `location.current` must return those
+coordinates with `simulated: true`; a successful setter alone is insufficient.
+This was verified on HomeView 27.2 (24V514). Location permission does not repair
+Weather’s service authentication or supply a physical GPS receiver.
+
+To undo, call `location.clear`; if the switch was originally off, run the helper
+with `disable`. Location simulation may need to be reapplied after a guest
+restart. The helper’s `status` action is read-only, and `enable` is idempotent.
+
 ## AirPlay video
 
 [`TVAirPlay.plist`](TVAirPlay.plist) is a guest preference override for the

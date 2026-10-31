@@ -12,6 +12,12 @@ xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
 codesign --force --sign - --entitlements "$source_dir/HomeModularControl.entitlements" \
   "$output_dir/home-modular-control"
 
+xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
+  -fobjc-arc -framework Foundation -framework CoreLocation \
+  "$source_dir/HomeViewLocationControl.m" -o "$output_dir/homeview-location-control"
+codesign --force --sign - --entitlements "$source_dir/HomeViewLocationControl.entitlements" \
+  "$output_dir/homeview-location-control"
+
 xcrun --sdk macosx clang -fobjc-arc -framework Foundation \
   -framework CoreGraphics -framework ImageIO "$source_dir/ExtractAssets.m" \
   -o "$output_dir/extract-homeview-assets"

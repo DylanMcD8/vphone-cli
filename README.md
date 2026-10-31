@@ -6,6 +6,8 @@
 
 This branch adds the following to the HomeView emulator:
 
+- **Custom HomeView app icon:** builds Dylan’s Icon Composer artwork and uses
+  its rendered icon in the emulator’s custom Dock tile.
 - **Responsive rendering and restored icons:** scoped BreadBoard Metal compiler
   and IconServices fixes address severe stalls and missing dashboard icons.
 - **Accurate touch input:** clicking and dragging continue to map correctly
@@ -16,6 +18,9 @@ This branch adds the following to the HomeView emulator:
   10:09:20 AM in the Mac’s time zone. Manual clocks continue ticking.
 - **Setup bypass:** a reversible option gets to the dashboard without nearby
   iPhone setup; it does not configure an Apple Account or HomeKit.
+- **Manual Location Services control:** an opt-in guest helper enables the
+  native switch, allowing the emulator’s location controls to supply a demo
+  location such as Cupertino. See the [location instructions](Research/Tools/HomeView/README.md#location-services).
 - **More clock faces and sample tiles:** research tools add Home Modular,
   including Apple’s populated sample layouts, and additional built-in face
   presets while preserving existing faces. See the
@@ -23,6 +28,9 @@ This branch adds the following to the HomeView emulator:
 - **AirPlay video from the host Mac:** a documented, reversible guest setting
   enables the tested QuickTime video presentation path. Follow the
   [AirPlay setup notes](Research/Guest/homeview_airplay.md).
+- **AirPlay music interface:** the native Now Playing view can display artwork,
+  track information, and controls from the Mac’s Music app. Playback can stall;
+  this is verified as a visual preview, not working sound.
 - **Wallpaper extraction tools:** extract bundled background images locally;
   Apple’s artwork and firmware are not redistributed in this repository.
 

@@ -46,6 +46,15 @@ enum VPhoneDockName {
     @MainActor
     static func label(_ name: String) {
         guard !name.isEmpty else { return }
+        // This executable lives in a BNDL rather than an APPL. AppKit can
+        // therefore choose the generic bundle icon despite CFBundleIconName.
+        // Load actool's ICNS rendition before the custom Dock tile captures it.
+        if let iconName = Bundle.main.object(forInfoDictionaryKey: "CFBundleIconFile") as? String,
+           let iconURL = Bundle.main.url(forResource: iconName, withExtension: "icns"),
+           let icon = NSImage(contentsOf: iconURL)
+        {
+            NSApp.applicationIconImage = icon
+        }
         let tile = NSApp.dockTile
         tile.contentView = VPhoneDockTileView(
             frame: NSRect(origin: .zero, size: tile.size),

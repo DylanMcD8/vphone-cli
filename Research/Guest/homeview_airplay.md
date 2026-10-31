@@ -67,3 +67,27 @@ if it was previously absent. If the entire file was created for this test and
 contains no other overrides, remove that file. Preserve unrelated later edits.
 Reboot the guest again to clear the shared feature-flag cache. Restoring the
 original setting restores the native Now Playing presentation path.
+
+## Music interface preview (October 31, 2026)
+
+The host Mac’s Music app discovers this receiver and delivers track metadata
+and artwork. A live screenshot verified the native HomeView Now Playing view
+showing “mq9” by Automatic, album art, duration, and playback controls. This
+initial session stopped shortly after starting. A later session showed
+“FEVER DREAM” by Alex Warren at 0:59 with the Pause control, and subsequent
+metadata displayed “I MISS YOU MORE” in the full-artwork view. This establishes
+live visual updates, not reliable audio output or continuous playback.
+
+Select HomeView in Music’s AirPlay menu and start a track. To bring the native
+interface forward after metadata arrives, use the guest `apps.launch` RPC with
+`{"bundle_id":"com.apple.pebblenowplaying"}`. This hidden service can report
+`app did not become frontmost` even while its interface visibly opens; verify
+with a screenshot. This is a research preview, not a reliable audio receiver.
+
+The receiver logs confirm `updateMRNowPlayingInfo`, artwork updates, and the
+Music source client. They also report `Starting the Synchronizer failed` with
+`kTimeoutErr` (-6722). The guest’s VirtualAudio plugin is not initialized and
+no local audio route is available. The virtio sound HAL driver is absent from
+this HomeView installation. These are concrete audio-path problems; DRM was
+not isolated as the cause. No audio driver, product-ID override, or new firmware
+patch was installed for this visual test. Keep the working video override above.
