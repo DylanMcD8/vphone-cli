@@ -25,6 +25,10 @@ This branch adds the following to the HomeView emulator:
   10:09:20 AM in the Mac’s time zone. Manual clocks continue ticking.
 - **Setup bypass:** a reversible option gets to the dashboard without nearby
   iPhone setup; it does not configure an Apple Account or HomeKit.
+- **Personal Content control:** an opt-in research helper enables the native
+  setting for a local demo profile, with read-back verification. Recognition,
+  paired-iPhone, and account/network requirements remain separate. See the
+  [research tool instructions](Research/Tools/HomeView/README.md#personal-content-for-a-local-demo-profile).
 - **Manual Location Services control:** an opt-in guest helper enables the
   native switch, allowing the emulator’s location controls to supply a demo
   location such as Cupertino. See the [location instructions](Research/Tools/HomeView/README.md#location-services).

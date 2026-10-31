@@ -21,6 +21,11 @@ codesign --force --sign - --entitlements "$source_dir/HomeViewLocationControl.en
 xcrun --sdk macosx clang -fobjc-arc -framework Foundation \
   -framework CoreGraphics -framework ImageIO "$source_dir/ExtractAssets.m" \
   -o "$output_dir/extract-homeview-assets"
+xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
+  -fobjc-arc -framework Foundation "$source_dir/HomeViewPersonalContent.m" \
+  -o "$output_dir/homeview-personal-content"
+codesign --force --sign - --entitlements "$source_dir/HomeViewPersonalContent.entitlements" \
+  "$output_dir/homeview-personal-content"
 xcrun --sdk macosx swiftc "$source_dir/RenderBackgroundColors.swift" \
   -o "$output_dir/render-homeview-colors"
 print -r -- "Research tools built in $output_dir"

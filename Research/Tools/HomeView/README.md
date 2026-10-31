@@ -67,6 +67,41 @@ To undo, call `location.clear`; if the switch was originally off, run the helper
 with `disable`. Location simulation may need to be reapplied after a guest
 restart. The helper’s `status` action is read-only, and `enable` is idempotent.
 
+## Personal Content for a local demo profile
+
+`homeview-personal-content` reads or changes the native UserProfiles Personal
+Content setting for an explicitly supplied profile UUID. It neither creates
+profiles nor authenticates an Apple Account. Push the helper into the guest
+with mode `755`, then use its `status`, `enable`, or `disable` action:
+
+```js
+print(proc.run('/var/tmp/homeview-personal-content', ['status', '<local demo profile UUID>']));
+print(proc.run('/var/tmp/homeview-personal-content', ['enable', '<local demo profile UUID>']));
+```
+
+Record the original value before enabling it. The helper uses
+`UPUpdateProfileRequest` and explicitly requests the Personal Content setting
+when reading it back. The lightweight `allProfilesWithError:` inventory omits
+settings, so its null values do not establish that the setting is off.
+Successful enable/disable operations verify the stored Boolean. Recognition
+and paired-device/network requirements remain separate; enabling this does
+not provide reminder, calendar, or message data.
+
+## Restoring Home Modular gallery samples
+
+The saved Home Modular presets contain Apple's gallery tile data. An actual
+HomeKit home can replace those tiles after the face loads, even when
+`HFEnablePressDemoModeKey` and `demoModeTypeV2` are off. A screenshot taken during
+that loading interval is insufficient verification.
+
+For the locally created demo-home experiment, preserve the face store and
+export/backup the owned demo home first. Removing only that identified local
+demo home through `HMHomeManager` restored the original sample tiles without
+rewriting face configurations. Verify that the home inventory is empty and
+that the sample tiles remain after loading. Do not remove other homes or clear
+HomeKit databases as a general setup step. The lamp/camera experiment is not
+enabled by this repository's standard installation.
+
 ## AirPlay video
 
 [`TVAirPlay.plist`](TVAirPlay.plist) is a guest preference override for the
