@@ -2,10 +2,14 @@
 
 ## Local manual clock controls (2026-10-30)
 
-The Device menu adds **Set Date & Time…** and **Use Mac’s Date & Time**,
+The Device menu adds **Set Date & Time…**, **Set to Marketing Date & Time**,
+and **Use Mac’s Date & Time**,
 enabled only when the guest advertises `clock_override`. The date picker uses
 the Mac's time zone, which is also the zone the existing guest sync supplies.
 The selected time keeps advancing; this is not a frozen display clock.
+The marketing preset uses a Gregorian calendar in the Mac's time zone to set
+November 13, 2026 at 10:09:20 AM through the same manual override. In
+America/New_York this resolves to `2026-11-13T15:09:20Z` (standard time).
 
 `time.clock {time, manual: true}` validates a finite Unix timestamp after 2001
 and no later than 2100, turns automatic time off through CoreTime and verifies

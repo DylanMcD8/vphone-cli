@@ -141,8 +141,10 @@ extension VPhoneMenuController {
         addUDIDItems(to: menu)
         menu.addItem(NSMenuItem.separator())
         let setDate = makeItem("Set Date & Time…", action: #selector(setGuestDateTime), symbol: "calendar.badge.clock")
+        let marketingDate = makeItem("Set to Marketing Date & Time", action: #selector(setMarketingDateTime), symbol: "calendar")
+        marketingDate.toolTip = VPhoneLocalization.text("Set the guest to November 13, 2026 at 10:09:20 AM in the Mac’s time zone. Its clock continues ticking.")
         let resetDate = makeItem("Use Mac’s Date & Time", action: #selector(resetGuestDateTime), symbol: "clock.arrow.circlepath")
-        clockOverrideItems = [setDate, resetDate]
+        clockOverrideItems = [setDate, marketingDate, resetDate]
         for clockItem in clockOverrideItems {
             clockItem.isEnabled = false
             menu.addItem(clockItem)
@@ -214,6 +216,15 @@ extension VPhoneMenuController {
                 showClockError(error)
             }
         }
+    }
+
+    @objc func setMarketingDateTime() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        guard let date = calendar.date(from: DateComponents(
+            year: 2026, month: 11, day: 13, hour: 10, minute: 9, second: 20,
+        )) else { return }
+        applyGuestDateTime(date, manual: true)
     }
 
     @objc func resetGuestDateTime() {

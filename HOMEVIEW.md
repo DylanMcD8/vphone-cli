@@ -14,6 +14,8 @@ The local additions include:
 - Control–Command–S for saving screenshots.
 - Device-menu date/time override and reset, backed by a guest clock API that
   preserves a ticking manual clock across periodic host sync requests.
+  “Set to Marketing Date & Time” sets November 13, 2026 at 10:09:20 AM
+  in the Mac’s time zone; “Use Mac’s Date & Time” restores automatic time.
 - Standalone Home Modular registration and wallpaper research tools.
 - A reversible AirPlay video presentation workaround; see
   [`Research/Guest/homeview_airplay.md`](Research/Guest/homeview_airplay.md).
