@@ -13,6 +13,10 @@ This branch adds the following to the HomeView emulator:
   Toggle **Device → Show Device Frame**; dragging the bezel moves the window,
   while the screen keeps its normal touch mapping when resized. The area outside
   the device stays transparent, with a separate native toolbar background.
+- **Hide or show the toolbar:** **Device → Show Toolbar** toggles the entire
+  titlebar, including the window buttons, FPS, and Home button. The preference
+  is remembered; use the same menu to bring it back, or drag the device bezel
+  to move the window while the toolbar is hidden.
 - **Live FPS display:** **Device → Show Frame Rate** replaces the IP address
   in the window subtitle with the guest’s frame rate.
 - **Responsive rendering and restored icons:** scoped BreadBoard Metal compiler

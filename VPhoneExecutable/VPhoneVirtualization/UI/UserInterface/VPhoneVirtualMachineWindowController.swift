@@ -164,6 +164,9 @@ class VPhoneVirtualMachineWindowController: NSObject, NSWindowDelegate {
         let controller = NSWindowController(window: window)
         controller.showWindow(nil)
         windowController = controller
+        if control.isHomeViewGuest {
+            setToolbarVisible(VPhoneHomeViewToolbar.isVisible)
+        }
         // AppKit constrains the initial frame when showing it. Fit the panel
         // after the toolbar and actual screen are known, including a wide TV
         // panel whose saved frame may otherwise be clamped out of proportion.
@@ -220,6 +223,12 @@ class VPhoneVirtualMachineWindowController: NSObject, NSWindowDelegate {
     }
 
     // MARK: - Fold Panel Persistence
+
+    func setToolbarVisible(_ visible: Bool) {
+        guard control?.isHomeViewGuest == true, let window = displayWindow else { return }
+        VPhoneHomeViewToolbar.setVisible(visible, in: window)
+        window.makeFirstResponder(virtualMachineView)
+    }
 
     func setHomeViewFrame(_ enabled: Bool) {
         guard control?.isHomeViewGuest == true, let window = displayWindow else { return }

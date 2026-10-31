@@ -1,5 +1,38 @@
 import AppKit
 
+enum VPhoneHomeViewToolbar {
+    static var isVisible: Bool {
+        get { UserDefaults.standard.object(forKey: "homeViewToolbarVisible") as? Bool ?? true }
+        set { UserDefaults.standard.set(newValue, forKey: "homeViewToolbarVisible") }
+    }
+
+    @MainActor
+    static func setVisible(_ visible: Bool, in window: NSWindow) {
+        guard let content = window.contentView else { return }
+        let size = content.bounds.size
+        let origin = window.frame.origin
+        // Keep a titled window so keyboard focus, resizing, and the Window
+        // menu continue to work. Extend the display over the hidden titlebar.
+        window.toolbar?.isVisible = visible
+        window.titlebarAppearsTransparent = !visible
+        if visible {
+            window.styleMask.remove(.fullSizeContentView)
+        } else {
+            window.styleMask.insert(.fullSizeContentView)
+        }
+        window.standardWindowButton(.closeButton)?.superview?.isHidden = !visible
+        for accessory in window.titlebarAccessoryViewControllers {
+            accessory.isHidden = !visible
+        }
+        if !window.styleMask.contains(.fullScreen) {
+            window.setContentSize(size)
+            window.setFrameOrigin(origin)
+        }
+        content.layoutSubtreeIfNeeded()
+        window.invalidateShadow()
+    }
+}
+
 enum VPhoneHomeViewFrame {
     private static let preference = "homeViewDeviceFrameEnabled"
 

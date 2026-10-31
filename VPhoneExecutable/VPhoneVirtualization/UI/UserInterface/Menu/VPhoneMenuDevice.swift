@@ -128,6 +128,9 @@ extension VPhoneMenuController {
         frameRateItem.isEnabled = VPhoneFrameRateMeter.isSupported
         menu.addItem(frameRateItem)
         if control.isHomeViewGuest {
+            let toolbarItem = makeItem("Show Toolbar", action: #selector(toggleHomeViewToolbar))
+            toolbarItem.state = VPhoneHomeViewToolbar.isVisible ? .on : .off
+            menu.addItem(toolbarItem)
             let frameItem = makeItem("Show Device Frame", action: #selector(toggleHomeViewFrame))
             frameItem.state = VPhoneHomeViewFrame.isEnabled ? .on : .off
             menu.addItem(frameItem)
@@ -486,6 +489,13 @@ extension VPhoneMenuController {
         VPhoneHomeViewFrame.isEnabled = enabled
         sender.state = enabled ? .on : .off
         onHomeViewFrameChange?(enabled)
+    }
+
+    @objc func toggleHomeViewToolbar(_ sender: NSMenuItem) {
+        let visible = !VPhoneHomeViewToolbar.isVisible
+        VPhoneHomeViewToolbar.isVisible = visible
+        sender.state = visible ? .on : .off
+        onHomeViewToolbarChange?(visible)
     }
 
     // MARK: - Restart

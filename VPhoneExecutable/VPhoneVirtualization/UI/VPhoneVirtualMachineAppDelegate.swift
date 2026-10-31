@@ -250,6 +250,9 @@ class VPhoneVirtualMachineAppDelegate: NSObject, NSApplicationDelegate {
             mc.onHomeViewFrameChange = { [weak wc] enabled in
                 wc?.setHomeViewFrame(enabled)
             }
+            mc.onHomeViewToolbarChange = { [weak wc] visible in
+                wc?.setToolbarVisible(visible)
+            }
             mc.onUnlockAtStartupChange = { [config = command.config] enabled in
                 let manifest = try VPhoneVirtualMachineManifest.load(from: config)
                 try manifest.updating(unlocksAtStartup: enabled).write(to: config)

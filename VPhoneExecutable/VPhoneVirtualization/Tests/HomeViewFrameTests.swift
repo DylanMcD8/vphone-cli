@@ -47,6 +47,34 @@ struct HomeViewFrameTests {
                       "Resized framed input must map to the same guest coordinate")
             }
         }
-        print("Passed \(checks) HomeView frame and input checks")
+        _ = NSApplication.shared
+        let window = NSWindow(contentRect: CGRect(x: 100, y: 100, width: 544, height: 544),
+                              styleMask: [.titled, .closable, .resizable, .miniaturizable],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSView(frame: CGRect(x: 0, y: 0, width: 544, height: 544))
+        window.toolbar = NSToolbar(identifier: "toolbar-visibility-test")
+        window.toolbarStyle = .unified
+        let accessory = NSTitlebarAccessoryViewController()
+        accessory.view = NSView(frame: CGRect(x: 0, y: 0, width: 40, height: 40))
+        accessory.layoutAttribute = .right
+        window.addTitlebarAccessoryViewController(accessory)
+        let size = window.contentView!.bounds.size
+        for _ in 0..<3 {
+            VPhoneHomeViewToolbar.setVisible(false, in: window)
+            check(window.contentView!.bounds.size == size, "Hiding toolbar must preserve display size")
+            check(window.frame.height == size.height, "Hidden toolbar must leave no strip above the display")
+            check(window.standardWindowButton(.closeButton)!.superview!.isHidden,
+                  "Titlebar and its custom background must be hidden")
+            check(accessory.isHidden, "Home accessory must hide with the toolbar")
+            check(window.canBecomeKey, "Hidden toolbar must not break keyboard focus")
+            VPhoneHomeViewToolbar.setVisible(true, in: window)
+            check(window.contentView!.bounds.size == size, "Restoring toolbar must preserve display size")
+            check(window.toolbar!.isVisible && !accessory.isHidden, "Toolbar and Home accessory must restore")
+            check(!window.standardWindowButton(.closeButton)!.superview!.isHidden,
+                  "Window buttons and custom title must restore")
+        }
+        window.close()
+        print("Passed \(checks) HomeView frame, input, and toolbar checks")
     }
 }
