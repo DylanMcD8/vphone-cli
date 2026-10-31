@@ -5,8 +5,9 @@
 ## Set up HomeView with a coding agent
 
 Give the following prompt to an agent that can run commands and inspect apps
-on your Mac. You need access to this private repository and a HomeView firmware
-source; firmware and a ready-made VM are **not included**. This HomeView build
+on your Mac. This repository is public; no GitHub account or invitation is
+needed to read or clone it. You still need a HomeView firmware source;
+firmware and a ready-made VM are **not included**. This HomeView build
 requires **macOS 27 or later** for OTA extraction and **Xcode 27** for the source
 build. Plan for roughly **100 GB of free space** during setup. The original,
 general-purpose vphone README follows this HomeView-specific prompt.
@@ -27,9 +28,10 @@ a short progress/resume note in that folder for any reboot or manual step.
    Report a missing requirement before starting large downloads or restores;
    do not delete my data to make space.
 
-2. Clone the private repository's homeview branch using my existing GitHub
-   authentication. If access is missing, tell me I need repository access or
-   a local checkout; never ask me to paste a password/token into chat. Read
+2. Clone the public repository's homeview branch over HTTPS, or reuse an
+   existing checkout of that branch. No GitHub login or token is needed:
+   git clone --branch homeview https://github.com/DylanMcD8/vphone-cli-homeview.git vphone-cli
+   Run the clone command from the working folder, then enter vphone-cli. Read
    AGENTS.md, HOMEVIEW.md, Skills/vphone-guest-control/SKILL.md and its relevant
    references, Documents/Guides/host-setup.md, Documents/Guides/create-and-run.md,
    Research/Firmware/homeview_bringup.md, Research/Guest/host_clock_sync.md,
@@ -99,7 +101,7 @@ Mac security/administrator action. Do not claim success from a build alone.
 
 # vphone-cli
 
-This private HomeView development copy includes local responsiveness, icon,
+This HomeView development copy includes local responsiveness, icon,
 touch, screenshot, and clock improvements. See [the HomeView notes](HOMEVIEW.md)
 for changes, validation, and the Home Modular research tools.
 

@@ -27,13 +27,14 @@ checks. These are recorded local results, not a claim that GitHub CI ran.
 
 This is a source repository. The working VM, firmware, extracted wallpapers,
 backups, and diagnostic logs stay in the local HomeView working folder. Git
-history and upstream licensing are preserved. The repository is created as
-a private standalone copy because GitHub does not support private forks of
-public repositories. Its default branch is `homeview`.
+history and upstream licensing are preserved. This is a public standalone
+development copy with `homeview` as its default branch. Anyone can read or
+clone it over HTTPS without a GitHub account or invitation. Firmware must be
+obtained separately; see the setup prompt at the top of `README.md`.
 
 The three inherited GitHub Actions workflows are preserved as inactive
-templates in `Research/Tools/HomeView/UpstreamWorkflows/`. The Mac's existing
-GitHub token can push source but lacks the `workflow` scope. These workflows
-also require the upstream's `xcode-27` runner. Restore them to
+templates in `Research/Tools/HomeView/UpstreamWorkflows/`. They were archived
+during the initial upload because its token lacked the `workflow` scope.
+These workflows also require the upstream's `xcode-27` runner. Restore them to
 `.github/workflows/` after arranging workflow-capable authentication and a
 compatible runner if automated builds are wanted.
