@@ -30,3 +30,10 @@ backups, and diagnostic logs stay in the local HomeView working folder. Git
 history and upstream licensing are preserved. The repository is created as
 a private standalone copy because GitHub does not support private forks of
 public repositories. Its default branch is `homeview`.
+
+The three inherited GitHub Actions workflows are preserved as inactive
+templates in `Research/Tools/HomeView/UpstreamWorkflows/`. The Mac's existing
+GitHub token can push source but lacks the `workflow` scope. These workflows
+also require the upstream's `xcode-27` runner. Restore them to
+`.github/workflows/` after arranging workflow-capable authentication and a
+compatible runner if automated builds are wanted.
