@@ -6,8 +6,9 @@
 
 Give the following prompt to an agent that can run commands and inspect apps
 on your Mac. This repository is public; no GitHub account or invitation is
-needed to read or clone it. You still need a HomeView firmware source;
-firmware and a ready-made VM are **not included**. This HomeView build
+needed to read or clone it. [Download HomeView firmware from Apple](#get-the-homeview-firmware)
+or let the agent use this branch's firmware catalog; firmware and a ready-made
+VM are **not included** in this repository. This HomeView build
 requires **macOS 27 or later** for OTA extraction and **Xcode 27** for the source
 build. Plan for roughly **100 GB of free space** during setup. The original,
 general-purpose vphone README follows this HomeView-specific prompt.
@@ -39,14 +40,20 @@ a short progress/resume note in that folder for any reboot or manual step.
    not an upstream release that may omit these HomeView fixes. Historical
    notes contain another machine's paths and UUIDs: discover mine instead.
 
-3. Locate my supplied HomeView firmware in the working folder. If it is
-   missing, ask for its location or an accessible firmware source. The tested
+3. Reuse my supplied HomeView firmware if present; otherwise use the Apple
+   download linked in README's "Get the HomeView firmware" section and this
+   branch's firmware catalog. Verify its size and SHA-256 before using it.
+   Do not ask me to find firmware that the catalog can already download. The tested
    combination was HomeView 27.2 (24V514), HomeAccessory17,1/J490, and cloudOS
    26.4 (23E5207q), using the documented Apple TV restore-base/OTA workflow.
    A HomeView full OTA/AEA is not a restore IPSW. Inspect the current CLI help
    and firmware preparation code for the correct inputs, required restore
    base, and any OTA metadata/decryption material. Fetch supported inputs
    from official sources when available; identify missing inputs explicitly.
+   The catalog includes the HomeView OTA URL and key, Apple TV HD 26.6 restore
+   base, and matching cloudOS source. For a local OTA, use the catalog filename
+   HomeAccessory17,1_27.2_24V514_OTA.aea so the catalog can recognize it;
+   alternatively use its exact catalog URL.
    Do not assume another build or a currently unavailable signing ticket works.
 
 4. Build the patched bundle from this checkout:
@@ -94,6 +101,39 @@ credentials, and extracted Apple assets out of Git. Continue through routine,
 reversible setup steps; pause when you genuinely need my input or a manual
 Mac security/administrator action. Do not claim success from a build alone.
 ```
+
+### Get the HomeView firmware
+
+The tested image is **HomeView 27.2 (24V514)** for **HomeAccessory17,1 / J490**.
+[Download the full HomeView OTA directly from Apple's CDN](https://updates.cdn-apple.com/2026FallFCS/0e08432f-4524-4949-ac8d-cddd47d4940f/com_apple_MobileAsset_SoftwareUpdate/91e6292d137569817d83050e9a21c6c93c25af6ab02fbaa7eeddb9ad5439b99a.aea).
+Save the `.aea` file in `~/HomeView-OS/` as
+`HomeAccessory17,1_27.2_24V514_OTA.aea` (the filename this branch recognizes),
+and give that location to your agent. You can also leave downloading to the agent;
+this branch already catalogs this image and its OTA decryption key.
+
+- **Download size:** 6,509,559,808 bytes (about 6.51 GB / 6.06 GiB).
+- **SHA-256:** `03b7b44bbe09fa033cd35077d8e5c3455b227d86ce7a528ecc6ef2165635f570`.
+- **Availability checked:** October 31, 2026; Apple's CDN returned HTTP 200
+  with the size and SHA-256 above. Availability can change.
+
+To verify a completed download in Terminal:
+
+```sh
+shasum -a 256 "$HOME/HomeView-OS/HomeAccessory17,1_27.2_24V514_OTA.aea"
+```
+
+Compare the result with the SHA-256 above; the hash-looking name in Apple's
+download URL is **not** the file's SHA-256. This is an encrypted **full OTA**, not a restore IPSW—do not
+rename it to `.ipsw` or feed it to a generic iPhone restore procedure.
+
+The complete setup also uses an **Apple TV HD 26.6 (23L773) restore IPSW** and
+**cloudOS 26.4 (23E5207q)**. The agent should resolve these from the
+[firmware catalog](VPhoneKit/VPhoneCoreKit/Firmware/VPhoneFirmwareCatalog.swift)
+and follow the [HomeView bring-up notes](Research/Firmware/homeview_bringup.md).
+The branch's HomeView firmware selection handles the OTA and restore-base
+pairing; you do not need to hunt for a HomeView IPSW. macOS 27+ is required to
+extract this OTA's LZRAVEN payload. A downloadable image does not guarantee
+that every required restore ticket remains available.
 
 ---
 
