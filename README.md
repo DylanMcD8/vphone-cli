@@ -2,6 +2,10 @@
 
 # vphone-cli
 
+This private HomeView development copy includes local responsiveness, icon,
+touch, screenshot, and clock improvements. See [the HomeView notes](HOMEVIEW.md)
+for changes, validation, and the Home Modular research tools.
+
 Run a virtual iPhone on an Apple Silicon Mac.
 
 > [!WARNING]
