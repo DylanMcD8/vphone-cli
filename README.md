@@ -1,4 +1,8 @@
-# Set up HomeView with a coding agent
+# vphone-cli for HomeView
+
+![HomeView emulator showing the dimensional clock face and app dashboard](Documents/homeview-preview.jpg)
+
+## Set up HomeView with a coding agent
 
 Give the following prompt to an agent that can run commands and inspect apps
 on your Mac. You need access to this private repository and a HomeView firmware
@@ -88,8 +92,6 @@ credentials, and extracted Apple assets out of Git. Continue through routine,
 reversible setup steps; pause when you genuinely need my input or a manual
 Mac security/administrator action. Do not claim success from a build alone.
 ```
-
-![HomeView emulator showing the dimensional clock face and app dashboard](Documents/homeview-preview.jpg)
 
 ---
 
