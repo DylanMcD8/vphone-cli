@@ -18,6 +18,10 @@ Virtual iPhone boot tool using Apple's Virtualization.framework with PCC researc
 
 ## Workflow Rules
 
+- Keep the HomeView **Features and Enhancements** section near the top of
+  `README.md` current when adding or changing user-facing HomeView features.
+  Distinguish shipped features, opt-in research tools, and local experiments;
+  do not describe an unverified prototype as generally available.
 - Do not create, read, or update `/TODO.md`.
 - Ignore `/TODO.md` if it exists locally; it is intentionally not part of the repo workflow anymore.
 - Track plan, progress, assumptions, blockers, and next actions in commit history, code comments when warranted, and current research docs instead of a repo TODO file.

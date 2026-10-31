@@ -2,6 +2,35 @@
 
 ![HomeView emulator showing the dimensional clock face and app dashboard](Documents/homeview-sim-screenshots.webp)
 
+## Features and Enhancements
+
+This branch adds the following to the HomeView emulator:
+
+- **Responsive rendering and restored icons:** scoped BreadBoard Metal compiler
+  and IconServices fixes address severe stalls and missing dashboard icons.
+- **Accurate touch input:** clicking and dragging continue to map correctly
+  after resizing the emulator window.
+- **Screenshot shortcut:** save screenshots with **Control–Command–S**.
+- **Date and time controls:** set a custom guest clock, restore the Mac’s time,
+  or choose **Device → Set to Marketing Date & Time** for November 13, 2026,
+  10:09:20 AM in the Mac’s time zone. Manual clocks continue ticking.
+- **Setup bypass:** a reversible option gets to the dashboard without nearby
+  iPhone setup; it does not configure an Apple Account or HomeKit.
+- **More clock faces and sample tiles:** research tools add Home Modular,
+  including Apple’s populated sample layouts, and additional built-in face
+  presets while preserving existing faces. See the
+  [face and asset tools](Research/Tools/HomeView/README.md).
+- **AirPlay video from the host Mac:** a documented, reversible guest setting
+  enables the tested QuickTime video presentation path. Follow the
+  [AirPlay setup notes](Research/Guest/homeview_airplay.md).
+- **Wallpaper extraction tools:** extract bundled background images locally;
+  Apple’s artwork and firmware are not redistributed in this repository.
+
+Some enhancements require the setup steps or research tools below; cloning
+the repository does not apply them to an existing VM. Apple service
+authentication, recognition, real cameras, and account-backed content remain
+separate limitations. See [HomeView notes](HOMEVIEW.md) for validation details.
+
 ## Set up HomeView with a coding agent
 
 Give the following prompt to an agent that can run commands and inspect apps
