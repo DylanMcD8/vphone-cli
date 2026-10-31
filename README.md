@@ -6,6 +6,10 @@
 
 This branch adds the following to the HomeView emulator:
 
+This is a fork of [Lakr233/vphone-cli](https://github.com/Lakr233/vphone-cli),
+including the merged HomeView support from PR #786 and the enhancements below.
+Use this fork's `homeview` branch for the complete setup.
+
 - **Native HomeView app and icon:** optional `.app` packaging uses Dylan’s
   Icon Composer artwork with standard macOS rendering and no Dock nameplate.
   See [native app packaging](Research/Tools/HomeView/README.md#native-homeview-app-and-icon).
@@ -76,7 +80,7 @@ general-purpose vphone README follows this HomeView-specific prompt.
 
 ```text
 Set up a working HomeView emulator on this Mac using the homeview branch of:
-https://github.com/DylanMcD8/vphone-cli-homeview
+https://github.com/DylanMcD8/vphone-cli
 
 Please do the setup and verify it works, rather than just giving me a plan.
 Use a dedicated HomeView-OS folder in my home directory, or reuse an existing
@@ -92,7 +96,7 @@ a short progress/resume note in that folder for any reboot or manual step.
 
 2. Clone the public repository's homeview branch over HTTPS, or reuse an
    existing checkout of that branch. No GitHub login or token is needed:
-   git clone --branch homeview https://github.com/DylanMcD8/vphone-cli-homeview.git vphone-cli
+   git clone --branch homeview https://github.com/DylanMcD8/vphone-cli.git vphone-cli
    Run the clone command from the working folder, then enter vphone-cli. Read
    AGENTS.md, HOMEVIEW.md, Skills/vphone-guest-control/SKILL.md and its relevant
    references, Documents/Guides/host-setup.md, Documents/Guides/create-and-run.md,
