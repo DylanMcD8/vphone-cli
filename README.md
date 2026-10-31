@@ -19,6 +19,9 @@ This branch adds the following to the HomeView emulator:
   to move the window while the toolbar is hidden.
 - **Live FPS display:** **Device → Show Frame Rate** replaces the IP address
   in the window subtitle with the guest’s frame rate.
+- **Keep the display awake:** optional HomeView preferences select Never for
+  automatic screen-off and extend the idle-dimming timer. See the
+  [configuration and restore instructions](Research/Guest/homeview_display_idle.md).
 - **Responsive rendering and restored icons:** scoped BreadBoard Metal compiler
   and IconServices fixes address severe stalls and missing dashboard icons.
 - **Accurate touch input:** clicking and dragging continue to map correctly
