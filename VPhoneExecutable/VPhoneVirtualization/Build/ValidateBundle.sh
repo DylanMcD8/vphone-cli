@@ -48,6 +48,10 @@ require_signed_macho() {
 for name in vphone-vm vphone-cli vphone-escalator libswiftCompatibilitySpan.vphone.dylib; do
     require_signed_macho "$macos/$name"
 done
+for helper in home-modular-control homeview-location-control homeview-personal-content homeview-wifi-indicator; do
+    require_signed_macho "$guest/HomeViewTools/$helper"
+done
+[[ -f "$guest/HomeViewTools/AdditionalFaces.json" ]] || { print -u2 'Missing HomeView face catalog'; exit 1; }
 require_signed_macho "$frameworks/VPhonePatchKit.framework/Versions/A/VPhonePatchKit"
 # The terminal reads these through Bundle.module, which searches
 # VPhone.bundle's Contents/Resources and root, never Contents/MacOS, and traps
@@ -265,7 +269,7 @@ while IFS= read -r file; do
         "$frameworks/"*)
             [[ "$platform" != IOS ]] || { print -u2 "iOS binary in Contents/Frameworks: ${file#$bundle/}"; exit 1; }
             ;;
-        "$guest/vphoned-tvos"|"$guest/libvphonetvsetupfocus.dylib"|"$guest/libvphonehomepoddisplay.dylib"|"$guest/libvphonecryptexstaging.dylib"|"$guest/libvphoneinstallpersona.dylib"|"$guest/libvphonehomepodmisfix.dylib"|"$guest/vphone-homepod-setup")
+        "$guest/vphoned-tvos"|"$guest/libvphonetvsetupfocus.dylib"|"$guest/libvphonehomepoddisplay.dylib"|"$guest/libvphonecryptexstaging.dylib"|"$guest/libvphoneinstallpersona.dylib"|"$guest/libvphonehomepodmisfix.dylib"|"$guest/vphone-homepod-setup"|"$guest/HomeViewTools/home-modular-control"|"$guest/HomeViewTools/homeview-location-control"|"$guest/HomeViewTools/homeview-personal-content"|"$guest/HomeViewTools/homeview-wifi-indicator")
             # tvOS dyld refuses an iOS-platform daemon on an Apple TV guest.
             [[ "$platform" == TVOS ]] || { print -u2 "Non-tvOS binary: ${file#$bundle/}"; exit 1; }
             ;;

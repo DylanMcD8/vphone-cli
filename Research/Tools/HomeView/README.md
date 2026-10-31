@@ -1,14 +1,55 @@
 # HomeView research tools
 
 These are the source helpers used with the HomeView 27.2 (24V514) research
-guest. They are separate from the shipped VPhone bundle. Build them on the
-Mac with Xcode 27:
+guest. The VPhone bundle includes the guest helpers used by its HomeView
+Controls panel. You can also build the tools manually on the Mac with Xcode 27:
 
 ```sh
 zsh Research/Tools/HomeView/Build.zsh
 ```
 
 The outputs go to `.build/HomeViewResearchTools`, which is ignored by Git.
+
+## HomeView Controls panel
+
+Open **Device → HomeView Controls…** in a running HomeView VM. The panel
+uploads the bundled, signed guest helpers automatically; it does not depend
+on a particular home folder, VM name, profile UUID, or pre-existing `/var/tmp`
+files. It reads each setting before enabling its control. A failed read is
+shown as unavailable, rather than Off. Refresh reads the current guest state.
+
+The panel provides keep-awake, cosmetic Wi-Fi status, Location Services,
+Personal Content for an explicitly selected existing profile, and the
+separate AirPlay video-player override. It can also open Now Playing, supply
+Cupertino coordinates, select installed faces, and add one or all missing
+built-in presets. Face additions back up PosterBoard's discovered face store,
+skip existing provider/descriptor pairs, and restore the previous selection.
+They do not create a HomeKit home or replace existing face customizations.
+
+**Refresh Home Screen** restarts only the guest BreadBoard shell. This refreshes
+the Calendar icon after a manual date change: the guest's clock and Calendar
+face can already show November 13 while the icon still shows an older day.
+The Mac's clock does not need to change. The interface reloads, and volatile
+recognition overrides attached to the old shell may need reapplying.
+
+Display and AirPlay changes are stored configuration changes; the panel
+identifies their restart requirement and offers an explicit Restart action.
+Keep-awake saves the previous preference values, and the AirPlay workaround
+saves the previous feature dictionary. Disabling restores those saved values;
+if the override was configured outside this panel and has no saved original,
+disabling removes its specific keys to use system defaults. Unrelated values
+are preserved. A partial keep-awake write attempts rollback and reads the
+result before displaying a value.
+
+Some HomeView builds do not supply initial SystemStatus Wi-Fi data to a
+read-only client. In that case the panel leaves the toggle unavailable and
+offers explicit Hide/Show actions, each verified by the publisher's native
+readback. This remains a cosmetic, volatile override. Location and Personal
+Content do not repair account authentication or companion-device requirements.
+
+Initial setup bypass is still a firmware-install selection. The separate
+workstation recognition-bypass experiment is not shipped by this panel.
+No new firmware or kernel patch is applied by opening or using the panel.
 
 ## Native HomeView app and icon
 

@@ -10,6 +10,17 @@ This is a fork of [Lakr233/vphone-cli](https://github.com/Lakr233/vphone-cli),
 including the merged HomeView support from PR #786 and the enhancements below.
 Use this fork's `homeview` branch for the complete setup.
 
+- **HomeView Controls panel:** **Device → HomeView Controls…** provides guest
+  toggles for display keep-awake, the cosmetic Wi-Fi indicator, Location
+  Services, a selected profile's Personal Content, and the AirPlay video
+  workaround. It also opens Now Playing, supplies a Cupertino demo location,
+  selects faces, and adds missing built-in presets with a face-store backup.
+  **Refresh Home Screen** refreshes cached icons after a guest date change.
+  Helpers are bundled and uploaded automatically after a guest restart.
+  Changes requiring a restart are identified. Initial setup bypass remains
+  a firmware-install option; the local recognition-bypass experiment is not
+  included. See [panel details](Research/Tools/HomeView/README.md#homeview-controls-panel).
+
 - **Native HomeView app and icon:** optional `.app` packaging uses Dylan’s
   Icon Composer artwork with standard macOS rendering and no Dock nameplate.
   See [native app packaging](Research/Tools/HomeView/README.md#native-homeview-app-and-icon).
@@ -17,6 +28,7 @@ Use this fork's `homeview` branch for the complete setup.
   Toggle **Device → Show Device Frame**; dragging the bezel moves the window,
   while the screen keeps its normal touch mapping when resized. The area outside
   the device stays transparent, with a separate native toolbar background.
+  The updated artwork closes the small seam at the screen cutout.
 - **Hide or show the toolbar:** **Device → Show Toolbar** toggles the entire
   titlebar, including the window buttons, FPS, and Home button. The preference
   is remembered; use the same menu to bring it back, or drag the device bezel

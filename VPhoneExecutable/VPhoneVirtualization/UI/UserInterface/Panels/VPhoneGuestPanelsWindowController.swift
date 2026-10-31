@@ -12,6 +12,7 @@ enum VPhoneGuestPanel: CaseIterable {
     case crashLogs
     case services
     case controls
+    case homeViewControls
     case gyroscope
     case attitude
     case foldPosture
@@ -25,6 +26,7 @@ enum VPhoneGuestPanel: CaseIterable {
         case .console, .crashLogs: "logs"
         case .services: "services"
         case .controls: "display"
+        case .homeViewControls: "script_js"
         case .gyroscope: "motion_gyroscope_toggle"
         case .attitude: "motion_attitude"
         case .foldPosture: "device_pose"
@@ -41,6 +43,7 @@ final class VPhoneGuestPanelsWindowController {
     private let control: VPhoneGuestControl
     private var windows: [VPhoneGuestPanel: VPhoneGuestToolWindow] = [:]
     private var attitudeDials: VPhoneAttitudeDialsWindowController?
+    var prepareManualLocation: (@MainActor () -> Void)?
     weak var displayWindow: NSWindow? {
         didSet { attitudeDials?.attach(to: displayWindow) }
     }
@@ -114,6 +117,20 @@ final class VPhoneGuestPanelsWindowController {
                 size: NSSize(width: 480, height: 640),
                 minSize: NSSize(width: 460, height: 400),
             ) { VPhoneControlsView(model: model) }
+        case .homeViewControls:
+            let model = VPhoneHomeViewControlsModel(
+                connected: { control.isConnected },
+                request: { try await control.call($0, params: $1) },
+                upload: { try await control.uploadFile(path: $0, data: $1, permissions: "755") },
+                resources: Bundle.main.resourceURL?.appendingPathComponent("guest-resources/HomeViewTools"),
+                prepareManualLocation: { [weak self] in self?.prepareManualLocation?() },
+            )
+            return VPhoneGuestToolWindow(
+                title: "HomeView Controls",
+                autosaveName: "vphone-panel-homeview-controls",
+                size: NSSize(width: 580, height: 800),
+                minSize: NSSize(width: 520, height: 480),
+            ) { VPhoneHomeViewControlsView(model: model, control: control) }
         case .gyroscope:
             let model = VPhoneMotionModel(
                 read: { try await control.readGyroscope() },

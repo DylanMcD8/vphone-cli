@@ -18,6 +18,7 @@ int main(int argc,char **argv){@autoreleasepool{
  setgid(501);setuid(501);
  dlopen("/System/Library/PrivateFrameworks/PosterBoardServices.framework/PosterBoardServices",RTLD_LAZY|RTLD_GLOBAL);
  id s=[NSClassFromString(@"PRSService") new];NSString *role=@"PRPosterRoleAmbient",*action=argc>1?@(argv[1]):@"active";
+ if([action isEqual:@"active-id"]){NSError *e=nil;id a=[s fetchActivePosterForRole:role error:&e];id config=[a lockScreenPosterConfiguration]?:[a homeScreenPosterConfiguration];printResult(config?[config serverUUID]:nil,e);return e||!config?1:0;}
  if([action isEqual:@"active"]){NSError *e=nil;id a=[s fetchActivePosterForRole:role error:&e];printResult(a,e);if(a){printResult([a lockScreenPosterConfiguration],nil);printResult([a homeScreenPosterConfiguration],nil);}return e?1:0;}
  __block BOOL done=NO,failed=NO;
  if([action isEqual:@"list"])[s fetchPosterConfigurationsForRole:role completion:^(id a,id e){printResult(a,e);done=YES;}];

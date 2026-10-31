@@ -118,6 +118,11 @@ class VPhoneMenuController {
         self.control = control
         guestToolsWindowController = VPhoneGuestToolsWindowController(control: control)
         guestPanelsWindowController = VPhoneGuestPanelsWindowController(control: control)
+        guestPanelsWindowController.prepareManualLocation = { [weak self] in
+            self?.locationProvider?.stopForwarding()
+            self?.locationProvider?.stopReplay()
+            self?.locationMenuItem?.state = .off
+        }
         setupMenuBar()
     }
 

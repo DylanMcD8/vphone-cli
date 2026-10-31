@@ -13,6 +13,9 @@ extension VPhoneMenuController {
         let menu = NSMenu(title: "Device")
         menu.autoenablesItems = false
         menu.addItem(makePanelItem(.controls, "Controls", keyEquivalent: "k", symbol: "slider.horizontal.3"))
+        if control.isHomeViewGuest {
+            menu.addItem(makePanelItem(.homeViewControls, "HomeView Controls…", keyEquivalent: "", symbol: "house"))
+        }
         let remote = makeItem(
             "Apple TV Remote", action: #selector(showTVRemote),
             keyEquivalent: "r", modifiers: [.command, .option], symbol: "appletvremote.gen2",

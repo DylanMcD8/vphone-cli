@@ -90,6 +90,12 @@ done
 /bin/mkdir -p "$macos" "$guest" "$frameworks"
 "${0:a:h}/CompileHomeViewIcon.sh" "$bundle"
 /bin/cp "$root/VPhoneExecutable/VPhoneVirtualization/Resources/HomeView Device Frame.png" "$resources/"
+zsh "$root/Research/Tools/HomeView/Build.zsh" --guest-only
+/bin/mkdir -p "$guest/HomeViewTools"
+for helper in home-modular-control homeview-location-control homeview-personal-content homeview-wifi-indicator; do
+    /bin/cp "$root/.build/HomeViewResearchTools/$helper" "$guest/HomeViewTools/"
+done
+/bin/cp "$root/Research/Tools/HomeView/AdditionalFaces.json" "$guest/HomeViewTools/"
 /bin/rm -rf "$frameworks/VPhonePatchKit.framework"
 /bin/cp -R "$command_products/VPhonePatchKit.framework" "$frameworks/VPhonePatchKit.framework"
 /bin/cp "$TARGET_BUILD_DIR/vphone-vm" "$macos/vphone-vm"

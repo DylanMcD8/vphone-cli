@@ -1,6 +1,108 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Add All Missing Presets" : {
+
+    },
+    "Add Selected Preset" : {
+
+    },
+    "Adding presets backs up the face store, skips existing presets, and restores the previous selection. Gallery samples use Apple’s built-in demo tiles; a configured HomeKit home may replace them." : {
+
+    },
+    "AirPlay" : {
+
+    },
+    "Choose a face" : {
+
+    },
+    "Choose a profile" : {
+
+    },
+    "Choose HomeView in the Mac’s Music or video AirPlay menu. Music artwork and controls work as a visual preview; audio playback may stall." : {
+
+    },
+    "Clock Faces" : {
+
+    },
+    "Display and Connection Status" : {
+
+    },
+    "Face Preset" : {
+
+    },
+    "Hide Wi-Fi Warning" : {
+
+    },
+    "HomeView may not report initial Wi-Fi status. These actions apply an explicit override and verify the result." : {
+
+    },
+    "Installed Face" : {
+
+    },
+    "Open Now Playing" : {
+
+    },
+    "Personal Content" : {
+
+    },
+    "Profile" : {
+
+    },
+    "Recognition and paired-device requirements remain separate. This control does not create an Apple Account or bypass recognition." : {
+
+    },
+    "Refresh Home Screen" : {
+
+    },
+    "Refresh Home Screen…" : {
+
+    },
+    "Refresh HomeView’s home screen?" : {
+
+    },
+    "Refreshes cached icons, including Calendar after a guest date change. The interface briefly reloads; temporary recognition overrides may need reapplying." : {
+
+    },
+    "Restart HomeView" : {
+
+    },
+    "Restart HomeView to apply the display or video changes." : {
+
+    },
+    "Restart HomeView?" : {
+
+    },
+    "Restart HomeView…" : {
+
+    },
+    "Select Face" : {
+
+    },
+    "Setup" : {
+
+    },
+    "Show Wi-Fi Warning" : {
+
+    },
+    "Supply a place for location-aware previews. Weather and other services can still require authentication." : {
+
+    },
+    "The initial setup bypass is selected during firmware installation. This panel changes runtime controls and preserves existing setup and profiles." : {
+
+    },
+    "The interface briefly reloads. Temporary recognition overrides may need reapplying." : {
+
+    },
+    "This ends the current AirPlay session and restarts the guest." : {
+
+    },
+    "Use Cupertino Demo Location" : {
+
+    },
+    "Waiting for HomeView…" : {
+
+    },
     "Changes HomeView’s detail level. Apps can defer lower detail until you switch away. Some screens use a fixed detail level." : {
 
     },

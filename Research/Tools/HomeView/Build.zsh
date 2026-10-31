@@ -4,6 +4,8 @@ set -euo pipefail
 source_dir=${0:a:h}
 repo_dir=${source_dir:h:h:h}
 output_dir="$repo_dir/.build/HomeViewResearchTools"
+guest_only=${1:-}
+[[ -z "$guest_only" || "$guest_only" == --guest-only ]] || { print -u2 'Usage: Build.zsh [--guest-only]'; exit 2; }
 mkdir -p "$output_dir"
 
 xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
@@ -18,16 +20,20 @@ xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
 codesign --force --sign - --entitlements "$source_dir/HomeViewLocationControl.entitlements" \
   "$output_dir/homeview-location-control"
 
+if [[ "$guest_only" != --guest-only ]]; then
 xcrun --sdk macosx clang -fobjc-arc -framework Foundation \
   -framework CoreGraphics -framework ImageIO "$source_dir/ExtractAssets.m" \
   -o "$output_dir/extract-homeview-assets"
+fi
 xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
   -fobjc-arc -framework Foundation "$source_dir/HomeViewPersonalContent.m" \
   -o "$output_dir/homeview-personal-content"
 codesign --force --sign - --entitlements "$source_dir/HomeViewPersonalContent.entitlements" \
   "$output_dir/homeview-personal-content"
+if [[ "$guest_only" != --guest-only ]]; then
 xcrun --sdk macosx swiftc "$source_dir/RenderBackgroundColors.swift" \
   -o "$output_dir/render-homeview-colors"
+fi
 xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
   -fobjc-arc -framework Foundation "$source_dir/HomeViewWifiIndicator.m" \
   -o "$output_dir/homeview-wifi-indicator"

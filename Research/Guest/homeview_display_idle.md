@@ -1,5 +1,9 @@
 # Keeping HomeView's display awake
 
+The app now exposes this configuration under **Device → HomeView Controls… →
+Keep Display Awake**, including saved-value restoration and a restart reminder.
+The command-line procedure below remains available for manual use.
+
 HomeView's BreadBoard shell has its own backlight controls. The iOS
 SpringBoard Auto-Lock override is not the configuration used here.
 

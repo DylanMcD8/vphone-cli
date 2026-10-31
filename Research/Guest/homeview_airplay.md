@@ -29,6 +29,11 @@ authentication.
 
 ## Apply the reversible workaround
 
+The app also exposes this workaround as **Device → HomeView Controls… → Use
+Separate AirPlay Video Player**, preserving the previous feature dictionary
+and offering a guest restart. **Open Now Playing** in the same panel opens
+the native music interface. The manual procedure follows.
+
 Use the existing VM's guest-control connection. These are **guest paths**;
 do not create the override in the host Mac's Library.
 

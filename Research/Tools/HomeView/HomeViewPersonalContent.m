@@ -10,12 +10,29 @@
 - (void)invalidate;
 + (id)fetchProfilesRequestForIdentity:(id)identity;
 + (id)allowPersonalContentAccessSettingKey;
++ (id)customNameSettingKey;
 + (id)settingRequestWithKey:(id)key;
 - (void)setSettingRequests:(id)requests;
 - (id)profileForFetchRequest:(id)request error:(NSError **)error;
 @end
 int main(int argc,char **argv){@autoreleasepool{
- if(argc!=3)return 64;NSString *action=@(argv[1]),*uuid=@(argv[2]);
+ if(argc<2)return 64;NSString *action=@(argv[1]);
+ if(argc==2 && [action isEqual:@"list"]){
+  dlopen("/System/Library/PrivateFrameworks/UserProfiles.framework/UserProfiles",RTLD_NOW|RTLD_LOCAL);
+  id store=[NSClassFromString(@"UPProfileStore") new];NSError *error=nil;id profiles=[store allProfilesWithError:&error];if(error)return 1;
+  NSMutableArray *entries=[NSMutableArray new];
+  for(id p in profiles){NSString *uuid=[[(NSUUID *)[[p valueForKey:@"identity"] valueForKey:@"identifier"] UUIDString] copy];
+   if(uuid){id fetch=[NSClassFromString(@"UPFetchProfilesRequest") fetchProfilesRequestForIdentity:[p valueForKey:@"identity"]];
+    id keyClass=NSClassFromString(@"UPSettingKey");id detailed=p;
+    if([keyClass respondsToSelector:@selector(customNameSettingKey)]){
+     id key=[keyClass customNameSettingKey];[fetch setSettingRequests:[NSSet setWithObject:[NSClassFromString(@"UPSettingRequest") settingRequestWithKey:key]]];
+     detailed=[store profileForFetchRequest:fetch error:nil]?:p;
+    }
+    id name=[detailed valueForKey:@"customName"];
+    [entries addObject:@{@"id":uuid,@"name":[name isKindOfClass:NSString.class]?name:uuid}];}}
+  NSData *data=[NSJSONSerialization dataWithJSONObject:@{@"profiles":entries} options:0 error:nil];puts([[NSString alloc]initWithData:data encoding:NSUTF8StringEncoding].UTF8String);[store invalidate];return 0;
+ }
+ if(argc!=3)return 64;NSString *uuid=@(argv[2]);
  if(![@[@"status",@"enable",@"disable"] containsObject:action])return 64;
  dlopen("/System/Library/PrivateFrameworks/UserProfiles.framework/UserProfiles",RTLD_NOW|RTLD_LOCAL);
  id store=[NSClassFromString(@"UPProfileStore") new];NSError *error=nil;id profiles=[store allProfilesWithError:&error];if(error)return 1;
