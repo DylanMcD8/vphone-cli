@@ -30,6 +30,9 @@ This branch adds the following to the HomeView emulator:
   PNG directly from the VM display, without JPEG compression or window scaling.
   **Control–Command–C** copies a PNG to the Mac clipboard. Captures contain the
   guest display, without the host toolbar or device frame.
+- **Hide the disconnected Wi-Fi indicator:** an opt-in research helper supplies
+  a simulated connected status for screenshots. It is cosmetic and session-only;
+  see the [enable/disable instructions](Research/Tools/HomeView/README.md#cosmetic-wi-fi-status-indicator).
 - **Date and time controls:** set a custom guest clock, restore the Mac’s time,
   or choose **Device → Set to Marketing Date & Time** (**Control–Command–D**) for November 13, 2026,
   10:09:20 AM in the Mac’s time zone. Manual clocks continue ticking.

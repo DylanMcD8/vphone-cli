@@ -209,3 +209,33 @@ The local extraction produced 40 distinct 1088-square Home Modular images
 shaders; Snoopy animation atlases were not downloaded. Firmware, extracted
 Apple catalogs/images, VM disks, guest databases, and screenshots remain
 outside this source repository.
+
+## Cosmetic Wi-Fi status indicator
+
+`homeview-wifi-indicator` is an opt-in helper for HomeView 27.2 (24V514).
+It publishes simulated Wi-Fi activity and three signal bars through Apple's
+SystemStatus Wi-Fi domain. HomeView then omits its disconnected status-bar
+symbol. This changes the displayed connection state, not the virtual Ethernet
+interface, radio hardware, connectivity checks, or account authentication.
+
+Build with `Build.zsh`, push `.build/HomeViewResearchTools/homeview-wifi-indicator`
+to `/var/tmp/homeview-wifi-indicator` with mode `755`, and run inside the guest:
+
+```js
+print(proc.run('/var/tmp/homeview-wifi-indicator', ['enable']));
+```
+
+Check process exit status zero, `verified: true`, and `wifiActive: true`.
+The helper reads back its published status in the native domain. Settings and Music were checked visually with the override.
+To show a disconnected indicator again:
+
+```js
+print(proc.run('/var/tmp/homeview-wifi-indicator', ['disable']));
+```
+
+This publishes inactive Wi-Fi with zero bars; it is not a restore of every
+previous network-status field. A guest reboot restores automatic reporting.
+The override is volatile and may be replaced by a later system-status update.
+Reapply after restarting the guest or if the warning returns. No launch daemon,
+firmware patch, or automatic startup change is installed. `/var/tmp` is cleared
+at boot, so push the helper again before using it in a new session.

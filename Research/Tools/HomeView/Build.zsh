@@ -28,4 +28,9 @@ codesign --force --sign - --entitlements "$source_dir/HomeViewPersonalContent.en
   "$output_dir/homeview-personal-content"
 xcrun --sdk macosx swiftc "$source_dir/RenderBackgroundColors.swift" \
   -o "$output_dir/render-homeview-colors"
+xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 \
+  -fobjc-arc -framework Foundation "$source_dir/HomeViewWifiIndicator.m" \
+  -o "$output_dir/homeview-wifi-indicator"
+codesign --force --sign - --entitlements "$source_dir/HomeViewWifiIndicator.entitlements" \
+  "$output_dir/homeview-wifi-indicator"
 print -r -- "Research tools built in $output_dir"

@@ -1,0 +1,54 @@
+// Cosmetic SystemStatus override for a HomeView research guest. No radio/network changes.
+#import <Foundation/Foundation.h>
+#include <dlfcn.h>
+
+@interface NSObject (HomeViewSystemStatus)
+- (id)data;
+- (void)setVolatileData:(id)data;
+- (void)setWifiActive:(BOOL)value;
+- (void)setSignalStrengthBars:(NSUInteger)value;
+- (BOOL)isWifiActive;
+- (NSUInteger)signalStrengthBars;
+- (void)invalidate;
+@end
+
+static void settle(void) {
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:1.0]];
+}
+
+int main(int argc, char **argv) { @autoreleasepool {
+    if (argc != 2 || (strcmp(argv[1], "enable") && strcmp(argv[1], "disable"))) {
+        fputs("Usage: homeview-wifi-indicator enable|disable\n", stderr);
+        return 2;
+    }
+    if (!dlopen("/System/Library/PrivateFrameworks/SystemStatus.framework/SystemStatus", RTLD_NOW|RTLD_LOCAL)) return 3;
+    Class observerClass = NSClassFromString(@"STWifiStatusDomain");
+    Class publisherClass = NSClassFromString(@"STWifiStatusDomainPublisher");
+    Class dataClass = NSClassFromString(@"STMutableWifiStatusDomainData");
+    if (!observerClass || !publisherClass || !dataClass) return 4;
+    id observer = [observerClass new];
+    BOOL enabled = strcmp(argv[1], "enable") == 0;
+    id publisher = [publisherClass new];
+    {
+        id data = [dataClass new];
+        [data setWifiActive:enabled];
+        [data setSignalStrengthBars:enabled ? 3 : 0];
+        [publisher setVolatileData:data];
+    }
+    id observed = nil;
+    for (int i = 0; i < 5; i++) {
+        settle();
+        observed = [observer data];
+        if (observed && [observed isWifiActive] == enabled) break;
+    }
+    if (!observed) { fputs("No SystemStatus response\n", stderr); return 5; }
+    BOOL verified = ([observed isWifiActive] == enabled && [observed signalStrengthBars] == (enabled ? 3 : 0));
+    NSDictionary *result = @{@"wifiActive": @([observed isWifiActive]),
+                             @"signalStrengthBars": @([observed signalStrengthBars]),
+                             @"verified": @(verified), @"cosmeticOnly": @YES};
+    NSData *json = [NSJSONSerialization dataWithJSONObject:result options:NSJSONWritingSortedKeys error:nil];
+    puts([[NSString alloc] initWithData:json encoding:NSUTF8StringEncoding].UTF8String);
+    [publisher invalidate];
+    [observer invalidate];
+    return verified ? 0 : 6;
+}}
