@@ -19,6 +19,9 @@ import VphonedNative
 /// until it has seen five, so the offer is repeated. `{automatic}` turns
 /// timed's automatic time on or off, as Set Automatically does for the
 /// clock; with `time` as well, it is applied first.
+/// `{time, manual: true}` disables automatic time and sets a ticking manual
+/// wall clock. The host's periodic offers then leave it alone. Re-enable
+/// automatic time and offer the current host time to reset it.
 ///
 /// Each answer is `{time, automatic}`, plus `changed` after a set and
 /// `offset` (the Mac's time less the guest's, before the change) after an
@@ -41,16 +44,37 @@ extension GuestAPI {
         guard method == "time.clock" else { return nil }
         let received = DispatchTime.now()
         let automatic = params["automatic"] as? Bool
+        let manual = params["manual"] as? Bool == true
+        guard !manual || (params["time"] != nil && automatic != true) else {
+            throw GuestAPIError.invalidRequest("manual time requires time and cannot enable automatic time")
+        }
         guard params["time"] != nil else {
             guard let automatic else { return try clockState() }
             return try clockLock.withLock { try setAutomaticClock(automatic) }
         }
         let time = try requiredNumber(params, "time")
         // timed refuses anything before 2001; nothing sends that in earnest.
-        guard time > kCFAbsoluteTimeIntervalSince1970 else {
-            throw GuestAPIError.invalidRequest("time must be seconds since 1970")
+        guard time.isFinite, time > kCFAbsoluteTimeIntervalSince1970, time <= 4_102_444_800 else {
+            throw GuestAPIError.invalidRequest("time must be seconds since 1970, after 2001 and no later than 2100")
         }
         return try clockLock.withLock {
+            if manual {
+                let previous = try clockState()
+                _ = try setAutomaticClock(false)
+                let target = time + Double(DispatchTime.now().uptimeNanoseconds - received.uptimeNanoseconds) / 1e9
+                let status = vp_clock_set_manual(target)
+                guard status == 0 else {
+                    if previous["automatic"] as? Bool == true { _ = try? setAutomaticClock(true) }
+                    throw GuestAPIError.operationFailed("could not set manual time (errno \(status))")
+                }
+                var state = try clockState()
+                guard let actual = state["time"] as? Double, abs(actual - target) < 1 else {
+                    if previous["automatic"] as? Bool == true { _ = try? setAutomaticClock(true) }
+                    throw GuestAPIError.operationFailed("guest did not keep the requested manual time")
+                }
+                state["changed"] = true
+                return state
+            }
             let switched = try automatic.map { try setAutomaticClock($0)["changed"] as? Bool ?? false } ?? false
             var state = try offerClock {
                 time + Double(DispatchTime.now().uptimeNanoseconds - received.uptimeNanoseconds) / 1e9

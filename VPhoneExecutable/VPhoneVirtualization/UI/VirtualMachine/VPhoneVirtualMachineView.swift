@@ -1198,7 +1198,7 @@ var panel = normalizeCoordinate(localPoint)
     private var displayGeometry: VPhoneDisplayGeometry {
         VPhoneDisplayGeometry(
             viewBounds: touchViewportBounds,
-            displaySize: touchViewportSize,
+            displaySize: activePanelPixels ?? recordingGraphicsDisplay?.sizeInPixels ?? bounds.size,
             isFlipped: isFlipped,
         )
     }
@@ -1208,25 +1208,11 @@ var panel = normalizeCoordinate(localPoint)
     /// outer or inner viewport. Input must be measured against that clipped
     /// rectangle; using the full backing bounds makes outer-screen touches
     /// land in the hidden part of the framebuffer.
-    private var touchViewportSize: CGSize {
-        if let active = activePanelPixels, active.width > 0, active.height > 0,
-           screenScale > 0 {
-            return CGSize(width: active.width / screenScale, height: active.height / screenScale)
-        }
-        return bounds.size
-    }
-
     private var touchViewportBounds: CGRect {
-        let size = touchViewportSize
-        guard size.width > 0, size.height > 0 else { return bounds }
-        // VPhoneDisplayContainerView bottom-aligns the full backing view inside
-        // the clipped viewport, so the active surface occupies the bottom-left
-        // portion of the VM view's local coordinates.
-        return CGRect(
-            x: 0,
-            y: max(0, bounds.height - size.height),
-            width: min(bounds.width, size.width),
-            height: min(bounds.height, size.height),
+        guard let active = activePanelPixels,
+              let backing = recordingGraphicsDisplay?.sizeInPixels else { return bounds }
+        return VPhoneDisplayGeometry.viewportBounds(
+            viewBounds: bounds, backingPixels: backing, activePixels: active,
         )
     }
 

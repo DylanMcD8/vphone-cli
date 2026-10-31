@@ -146,6 +146,10 @@ int vp_clock_set_automatic(bool enabled);
 /// com.apple.timed and NTP in com.apple.timed.sources.
 int vp_clock_offer(double unixTime, double uncertainty);
 
+/// Set the guest wall clock after disabling automatic time. Returns errno
+/// on failure, zero on success. Needs root; never runs in the host process.
+int vp_clock_set_manual(double unixTime);
+
 typedef struct {
     int32_t pid;
     int32_t ppid;

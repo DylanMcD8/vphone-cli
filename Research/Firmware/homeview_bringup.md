@@ -1,5 +1,89 @@
 # HomeView virtualization bringup
 
+## Local networking investigation (2026-10-30)
+
+The user's Safari browsing works through virtual Ethernet. Guest DNS and an
+HTTPS request to captive.apple.com also succeed. Music nevertheless displays
+“No Internet Connection,” and Weather remains on its loading screen.
+
+Cold-launch logs show successful HTTP 200 responses in Music followed by
+media/developer-token acquisition failure: ICError -8200, AMSErrorDomain 314,
+and a Mescal session establishment failure. SonicMusic records HTTP 500 from
+`https://fpinit.itunes.apple.com/v1/signSapSetup`, with
+`sign-sap-setup-buffer = Error`. Weather also records an HTTP 500 during Mescal
+setup and fails to sign its data request. These establish a higher-level
+Apple service/request-signing failure, not a general loss of IP connectivity.
+They do not establish whether the server error is transient or caused by this
+research guest's identity/provisioning; an Apple Account sign-in is not a
+verified remedy.
+
+The stock wifid launch plist is hardware-gated and does not load in this VM.
+For diagnosis only, a copy with the device-tree gate removed and KeepAlive off
+was loaded from /var/tmp. It stayed running and exposed CoreWiFi, but Music
+still displayed the same error and token failures. The test service was then
+unloaded (verified not running/loaded, no override), and its temporary plist
+was deleted. No permanent Wi-Fi, identity, signing, or activation changes
+were made. Log artifacts are in the workspace work/offline-*.json files.
+
+## Resized host-window touch mapping (2026-10-30)
+
+After shader and icon repairs, app launch via the guest API worked, but mouse
+clicks and drags hit the wrong locations and often dismissed the dashboard.
+`display.geometry` reported view bounds `[0,0,717,717]` and touch display rect
+`[0,173,544,544]` for the full 1088-square panel. The host incorrectly converted
+active pixels to fixed native points rather than scaling them with the resized
+backing view. Touches in the lower 173 points consequently clamped to the bottom.
+
+Compute the active viewport as the active/backing pixel fraction of current
+view bounds. Full-panel guests now use their entire resized view; clipped
+panels retain the container's left/high-y alignment. Geometry regression tests
+cover 320, 544, 717, and 1088 point windows, lower icon targets, and a scaled
+clipped panel. All 14 geometry tests, the full build, bundle admission, and
+signature verification passed. After deployment, a resized 685-point window
+reported matching view bounds and display rect `[0,0,685,685]`. The user
+confirmed that app clicks and middle-of-dashboard drag scrolling both work.
+This is a host input fix, with no guest firmware or entitlement changes.
+
+## Local shader-compiler access investigation (2026-10-30)
+
+On the M2 Max / macOS 27.0.1 host, the 24V514 HomeView guest with 8 vCPUs
+and 8 GiB RAM showed severely delayed touch navigation after setup bypass.
+Host memory pressure was low, with no swap use. Both guest screenshots and
+host framebuffer captures continued changing; the window frame meter showed
+30 fps on the animated idle clock. Backboard logs confirmed touch arrival.
+
+BreadBoard's live log exposed `com.apple.MTLCompilerService` lookup failure
+159 (`Sandbox restriction`), `Compiler failed with XPC_ERROR_CONNECTION_INVALID`,
+and ten retries for each compile request. Extend its existing scoped lookup
+patch with that one compiler service; retain the executable backup and original
+entitlements. This is not a global sandbox or GPU feature override. Runtime
+verification subsequently found the compiler-denial loop gone, and the user
+confirmed much better responsiveness. Installation added exactly one service
+exception (74 total). The finished bundle passed admission and signature checks;
+62 focused patch-model, catalogue, and entitlement-merger tests passed.
+
+The user's next report was missing home-screen icons. A dashboard screenshot
+shows generic grid placeholders for Music, Podcasts, Safari, FaceTime, Calendar,
+and Messages. BreadBoard logs `Unknown device class: 13` and repeated icon image
+generation failures with NSCocoaErrorDomain 4099. Its inspected entitlements lack
+`com.apple.iconservices`, the exact Mach endpoint declared by the guest's
+`com.apple.iconservices.iconservicesagent` launch plist. Starting the agent
+succeeds but does not restore icons. Add that one lookup to the same reversible
+patch. Runtime installation added exactly one lookup (75 total); IconServices
+then launched on demand as PID 227. A bounded log sample contained no icon-image
+or compiler failures. The user confirmed that icons returned, and a screenshot
+verified Calendar, Messages, Home, Intercom, Weather, Find My, Reminders,
+Settings, Timers, Alarms, and World Clock artwork. The device-class warning
+does not prevent these icons rendering. All 62 focused tests, bundle admission,
+and signature verification passed. Snapshot `performance-fixed` retains the
+working shader fix before the icon change; the final guest is left running.
+
+A separate perceptiond-to-sigmond lookup loop consumed roughly 120% of one
+core and 50% in launchd. Briefly suspending perceptiond lowered CPU use but
+did not restore interaction. That test was reversed, the shell and sensor
+service restarted, and the VM cleanly rebooted. No service-disable overrides
+were left behind. Snapshot `setup-bypassed` records the pre-fix guest.
+
 ## Current tested result
 
 `HomeView` is installed in the normal Launchpad library and left running on

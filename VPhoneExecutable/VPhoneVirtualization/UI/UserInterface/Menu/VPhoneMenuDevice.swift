@@ -140,6 +140,14 @@ extension VPhoneMenuController {
         menu.addItem(NSMenuItem.separator())
         addUDIDItems(to: menu)
         menu.addItem(NSMenuItem.separator())
+        let setDate = makeItem("Set Date & Time…", action: #selector(setGuestDateTime), symbol: "calendar.badge.clock")
+        let resetDate = makeItem("Use Mac’s Date & Time", action: #selector(resetGuestDateTime), symbol: "clock.arrow.circlepath")
+        clockOverrideItems = [setDate, resetDate]
+        for clockItem in clockOverrideItems {
+            clockItem.isEnabled = false
+            menu.addItem(clockItem)
+        }
+        menu.addItem(NSMenuItem.separator())
         addSetupAssistantItem(to: menu)
         // Saved to this machine and read when vphoned next starts in the guest.
         let unlockItem = makeItem("Unlock at Startup", action: #selector(toggleUnlockAtStartup), symbol: "lock.open")
@@ -164,6 +172,71 @@ extension VPhoneMenuController {
     @objc func showTVRemote() {
         guard showsTVControls else { return }
         tvRemoteWindowController.show()
+    }
+
+    // MARK: - Guest Clock
+
+    func updateClockOverrideAvailability(available: Bool) {
+        clockOverrideItems.forEach { $0.isEnabled = available }
+    }
+
+    @objc func setGuestDateTime() {
+        Task {
+            do {
+                let state = try await control.call("time.clock")
+                guard let time = (state["time"] as? NSNumber)?.doubleValue else {
+                    throw VPhoneGuestControl.ControlError.protocolError("Guest returned no clock value")
+                }
+                let picker = NSDatePicker(frame: NSRect(x: 0, y: 0, width: 340, height: 28))
+                picker.datePickerStyle = .textFieldAndStepper
+                picker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
+                picker.timeZone = .current
+                picker.minDate = Date(timeIntervalSince1970: 978_307_201)
+                picker.maxDate = Date(timeIntervalSince1970: 4_102_444_800)
+                picker.dateValue = Date(timeIntervalSince1970: time)
+                picker.setAccessibilityLabel("Guest date and time")
+                let alert = NSAlert()
+                alert.messageText = VPhoneLocalization.text("Set Guest Date & Time")
+                alert.informativeText = VPhoneLocalization.format(
+                    "Choose a date and time in %@. Only the guest changes; its clock continues ticking. Automatic time stays off until you choose Use Mac’s Date & Time.",
+                    TimeZone.current.identifier,
+                )
+                alert.accessoryView = picker
+                alert.addButton(withTitle: VPhoneLocalization.text("Set"))
+                alert.addButton(withTitle: VPhoneLocalization.text("Cancel"))
+                alert.window.initialFirstResponder = picker
+                VPhoneAlert.present(alert) { [weak self] response in
+                    guard let self, response == .alertFirstButtonReturn else { return }
+                    alert.window.makeFirstResponder(nil)
+                    applyGuestDateTime(picker.dateValue, manual: true)
+                }
+            } catch {
+                showClockError(error)
+            }
+        }
+    }
+
+    @objc func resetGuestDateTime() {
+        applyGuestDateTime(nil, manual: false)
+    }
+
+    private func applyGuestDateTime(_ date: Date?, manual: Bool) {
+        updateClockOverrideAvailability(available: false)
+        Task {
+            defer { updateClockOverrideAvailability(available: control.guestCapabilities.contains("clock_override")) }
+            do {
+                let params: [String: Any] = manual
+                    ? ["time": (date ?? Date()).timeIntervalSince1970, "manual": true]
+                    : ["time": Date().timeIntervalSince1970, "automatic": true]
+                _ = try await control.call("time.clock", params: params)
+            } catch {
+                showClockError(error)
+            }
+        }
+    }
+
+    private func showClockError(_ error: Error) {
+        VPhoneAlert.present(title: "Unable to Set Guest Clock", message: error.localizedDescription, style: .warning)
     }
 
     @objc func sendHome() {

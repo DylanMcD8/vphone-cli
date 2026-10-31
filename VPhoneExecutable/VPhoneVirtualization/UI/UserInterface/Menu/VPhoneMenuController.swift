@@ -77,6 +77,7 @@ class VPhoneMenuController {
     var settingsSetItem: NSMenuItem?
     var restartGuestItem: NSMenuItem?
     var shutDownGuestItem: NSMenuItem?
+    var clockOverrideItems: [NSMenuItem] = []
     var setUDIDItem: NSMenuItem?
     var resetUDIDItem: NSMenuItem?
     var skipSetupAssistantItem: NSMenuItem?

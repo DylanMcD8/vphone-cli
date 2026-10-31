@@ -148,6 +148,7 @@ enum GuestAPI {
                 "network_resolve",
                 "timezone",
                 "clock",
+                "clock_override",
                 "audio_host_latency",
                 "motion_gyroscope",
                 "motion_gyroscope_toggle",

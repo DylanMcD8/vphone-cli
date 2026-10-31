@@ -1,5 +1,23 @@
 # Patch Comparison: Regular / Development / Jailbreak / Experimental
 
+> **HomeView shader compiler and icon lookups (2026-10-30).**
+> Extend the existing HomeView-only `system-breadboard-exp-mach_lookup` with
+> `com.apple.MTLCompilerService`. The 24V514 guest logs ten connection retries
+> per shader request, explicitly reporting lookup error 159 / Sandbox
+> restriction, while the idle clock continues presenting at 30 fps. Preserve
+> every existing entitlement and the original executable backup. Campo's
+> shared service list, other presets, and kernel/cache bytes are unchanged.
+> See the local performance investigation in `Firmware/homeview_bringup.md`.
+> The compiler exception installed successfully (+1, 74 total lookups); the
+> repeated compiler denials disappeared and the user confirmed much better
+> responsiveness. All 62 focused tests and bundle admission passed. Follow-up
+> icon placeholders coincide with IconServices XPC error 4099 and an absent
+> `com.apple.iconservices` lookup. Add that endpoint to the same scoped patch;
+> Installation added exactly one lookup (75 total). IconServices then launched
+> on demand, the repeated icon-generation errors disappeared, and a dashboard
+> screenshot plus user confirmation verified restored icons. The 62 focused
+> tests and finished-bundle admission/signature checks passed again.
+
 > **HomeView distance simulation (2026-10-30, runtime validation pending).**
 > `dyld-exp-homeview_environment_service` opens only BreadBoardServices'
 > environment-service internal-install branch on the reviewed 27.2 userland.

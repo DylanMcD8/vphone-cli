@@ -120,7 +120,7 @@ public enum FirmwareGuestSystemPatchSet {
             VPhonePatchDeclaration(
                 identifier: homeViewDisplayLookups,
                 title: "HomeView shell display access",
-                summary: "Adds backboard/frontboard Mach service lookup exceptions to BreadBoard's temporary sandbox for the older research kernel, preserving its existing entitlements. Keeps an executable backup for deselection.",
+                summary: "Adds backboard/frontboard, Metal compiler, and icon-rendering service lookup exceptions to BreadBoard's temporary sandbox for the older research kernel, preserving its existing entitlements. Keeps an executable backup for deselection.",
                 target: .guestExecutable(path: "/System/Library/CoreServices/BreadBoard.app/BreadBoard"),
                 applicability: VPhonePatchApplicability(iOSBase: .release(major: 27, minor: 2)),
             ),

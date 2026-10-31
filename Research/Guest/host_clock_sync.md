@@ -1,5 +1,44 @@
 # Host clock sync
 
+## Local manual clock controls (2026-10-30)
+
+The Device menu adds **Set Date & Time…** and **Use Mac’s Date & Time**,
+enabled only when the guest advertises `clock_override`. The date picker uses
+the Mac's time zone, which is also the zone the existing guest sync supplies.
+The selected time keeps advancing; this is not a frozen display clock.
+
+`time.clock {time, manual: true}` validates a finite Unix timestamp after 2001
+and no later than 2100, turns automatic time off through CoreTime and verifies
+the setting, then calls `settimeofday` inside the root guest daemon and posts
+`com.apple.system.clock_set`. The operation shares the existing clock lock so
+a host sync cannot interleave with it. A failed set restores automatic time
+if it had been on. The existing minute-by-minute host sync respects automatic
+time being off. `{time: currentHostTime, automatic: true}` restores sync.
+Manual requests without a time or with automatic time enabled are rejected.
+
+The full bundle build and signature checks passed. On HomeView 27.2 (24V514),
+live RPC checks rejected missing/conflicting/out-of-range manual requests,
+set the clock two days forward and one day backward, and restored automatic
+time. Manual time kept ticking within 2 seconds of its expected offset over
+65 seconds, spanning a host-sync interval; an explicit ordinary host time
+sync also left it unchanged. The Device menu items were enabled, and the user
+successfully used the picker to select November 15. That interrupted the first
+automated hold test, so it was rerun without UI interaction and passed. The
+guest was left on automatic/current time. Persistence of the chosen manual
+date across guest reboots was not tested.
+
+An initial live update failed because a Foundation networking probe had
+created a URL cache directory at /var/root/Library/Caches/vphoned, where
+agent.apply_update expects to rename an executable. The running old agent
+was healthy; the host suppressed its connected state while retrying updates.
+Restoring the old host staging file allowed diagnosis through script.eval.
+The cache directory (Cache.db and its WAL/SHM files) was moved intact to
+vphoned-network-test-cache-20261030, and staging the new tvOS daemon then
+updated successfully. No guest system-disk update was needed. The host binary
+was authorized once through Launch HomeView.command. Test artifacts are in
+work/clock-override-live-verification.json and work/clock-override-live-test.json
+(the latter includes the user-interrupted test).
+
 `vphone-vm` keeps a guest's wall clock on the Mac's. It sends the Mac's time
 after every connect to vphoned, every minute, when the Mac wakes and when the
 Mac's own clock is set; vphoned offers it to timed as an NTP result, and timed

@@ -21,6 +21,30 @@ struct DisplayGeometryTests {
 
     // MARK: - Display Rect
 
+    @Test(arguments: [320.0, 544.0, 717.0, 1088.0])
+    func `resizing HomeView keeps taps aligned with the entire display`(side: Double) {
+        let bounds = CGRect(x: 0, y: 0, width: side, height: side)
+        let pixels = CGSize(width: 1088, height: 1088)
+        let viewport = VPhoneDisplayGeometry.viewportBounds(viewBounds: bounds, backingPixels: pixels, activePixels: pixels)
+        let geometry = VPhoneDisplayGeometry(viewBounds: viewport, displaySize: pixels, isFlipped: false)
+        #expect(geometry.displayRect == bounds)
+        #expect(Self.close(geometry.normalizedPoint(CGPoint(x: side / 2, y: side / 2)), CGPoint(x: 0.5, y: 0.5)))
+        let lowerIcon = CGPoint(x: side * 0.75, y: side * 0.2)
+        #expect(Self.close(geometry.normalizedPoint(lowerIcon), CGPoint(x: 0.75, y: 0.8)))
+        #expect(geometry.edge(at: lowerIcon) == .none)
+    }
+
+    @Test func `a clipped panel scales with its backing view`() {
+        let viewport = VPhoneDisplayGeometry.viewportBounds(
+            viewBounds: CGRect(x: 0, y: 0, width: 800, height: 1600),
+            backingPixels: CGSize(width: 1000, height: 2000),
+            activePixels: CGSize(width: 500, height: 1000),
+        )
+        #expect(viewport == CGRect(x: 0, y: 800, width: 400, height: 800))
+        let geometry = VPhoneDisplayGeometry(viewBounds: viewport, displaySize: CGSize(width: 500, height: 1000), isFlipped: false)
+        #expect(Self.close(geometry.normalizedPoint(CGPoint(x: 200, y: 1200)), CGPoint(x: 0.5, y: 0.5)))
+    }
+
     @Test func `a window of the display's aspect ratio is all display`() {
         let rect = Self.geometry(Self.window).displayRect
         #expect(abs(rect.minX) < 0.5 && abs(rect.minY) < 0.5)

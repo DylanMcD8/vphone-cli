@@ -18,6 +18,10 @@
 #import "Include/VphonedNative.h"
 
 #include <dlfcn.h>
+#include <errno.h>
+#include <math.h>
+#include <notify.h>
+#include <sys/time.h>
 
 static BOOL runWithin(int64_t seconds, dispatch_block_t work) {
     dispatch_semaphore_t done = dispatch_semaphore_create(0);
@@ -55,5 +59,18 @@ int vp_clock_offer(double unixTime, double uncertainty) {
     if (!setSourceTime) return -1;
     CFAbsoluteTime time = unixTime - kCFAbsoluteTimeIntervalSince1970;
     if (!runWithin(3, ^{ setSourceTime(CFSTR("NTP"), time, uncertainty); })) return -2;
+    return 0;
+}
+
+int vp_clock_set_manual(double unixTime) {
+    // The caller first turns automatic time off and verifies that timed has
+    // acknowledged it. Otherwise its next update would undo this change.
+    if (!isfinite(unixTime) || unixTime <= kCFAbsoluteTimeIntervalSince1970 || unixTime > 4102444800.0) return EINVAL;
+    struct timeval value = {
+        .tv_sec = (time_t)floor(unixTime),
+        .tv_usec = (suseconds_t)((unixTime - floor(unixTime)) * 1000000.0),
+    };
+    if (settimeofday(&value, NULL) != 0) return errno;
+    notify_post("com.apple.system.clock_set");
     return 0;
 }
