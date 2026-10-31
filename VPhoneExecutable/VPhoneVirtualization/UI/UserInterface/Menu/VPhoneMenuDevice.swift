@@ -127,6 +127,11 @@ extension VPhoneMenuController {
         frameRateItem.state = VPhoneFrameRateDisplay.isEnabled ? .on : .off
         frameRateItem.isEnabled = VPhoneFrameRateMeter.isSupported
         menu.addItem(frameRateItem)
+        if control.isHomeViewGuest {
+            let frameItem = makeItem("Show Device Frame", action: #selector(toggleHomeViewFrame))
+            frameItem.state = VPhoneHomeViewFrame.isEnabled ? .on : .off
+            menu.addItem(frameItem)
+        }
         let tidItem = makeItem("Touch ID Home Forwarding", action: #selector(toggleTouchIDForwarding))
         if hasTouchID {
             let tidEnabled = !UserDefaults.standard.bool(forKey: "touchIDForwardingDisabled")
@@ -142,6 +147,8 @@ extension VPhoneMenuController {
         menu.addItem(NSMenuItem.separator())
         let setDate = makeItem("Set Date & Time…", action: #selector(setGuestDateTime), symbol: "calendar.badge.clock")
         let marketingDate = makeItem("Set to Marketing Date & Time", action: #selector(setMarketingDateTime), symbol: "calendar")
+        marketingDate.keyEquivalent = "d"
+        marketingDate.keyEquivalentModifierMask = [.command]
         marketingDate.toolTip = VPhoneLocalization.text("Set the guest to November 13, 2026 at 10:09:20 AM in the Mac’s time zone. Its clock continues ticking.")
         let resetDate = makeItem("Use Mac’s Date & Time", action: #selector(resetGuestDateTime), symbol: "clock.arrow.circlepath")
         clockOverrideItems = [setDate, marketingDate, resetDate]
@@ -472,6 +479,13 @@ extension VPhoneMenuController {
         VPhoneFrameRateDisplay.isEnabled = enabled
         sender.state = enabled ? .on : .off
         onFrameRateDisplayChange?(enabled)
+    }
+
+    @objc func toggleHomeViewFrame(_ sender: NSMenuItem) {
+        let enabled = !VPhoneHomeViewFrame.isEnabled
+        VPhoneHomeViewFrame.isEnabled = enabled
+        sender.state = enabled ? .on : .off
+        onHomeViewFrameChange?(enabled)
     }
 
     // MARK: - Restart

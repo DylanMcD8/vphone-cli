@@ -9,13 +9,19 @@ This branch adds the following to the HomeView emulator:
 - **Native HomeView app and icon:** optional `.app` packaging uses Dylan’s
   Icon Composer artwork with standard macOS rendering and no Dock nameplate.
   See [native app packaging](Research/Tools/HomeView/README.md#native-homeview-app-and-icon).
+- **HomeView device frame:** wraps the live screen in the supplied bezel artwork.
+  Toggle **Device → Show Device Frame**; dragging the bezel moves the window,
+  while the screen keeps its normal touch mapping when resized. The area outside
+  the device stays transparent, with a separate native toolbar background.
+- **Live FPS display:** **Device → Show Frame Rate** replaces the IP address
+  in the window subtitle with the guest’s frame rate.
 - **Responsive rendering and restored icons:** scoped BreadBoard Metal compiler
   and IconServices fixes address severe stalls and missing dashboard icons.
 - **Accurate touch input:** clicking and dragging continue to map correctly
   after resizing the emulator window.
 - **Screenshot shortcut:** save screenshots with **Control–Command–S**.
 - **Date and time controls:** set a custom guest clock, restore the Mac’s time,
-  or choose **Device → Set to Marketing Date & Time** for November 13, 2026,
+  or choose **Device → Set to Marketing Date & Time** (**⌘D**) for November 13, 2026,
   10:09:20 AM in the Mac’s time zone. Manual clocks continue ticking.
 - **Setup bypass:** a reversible option gets to the dashboard without nearby
   iPhone setup; it does not configure an Apple Account or HomeKit.

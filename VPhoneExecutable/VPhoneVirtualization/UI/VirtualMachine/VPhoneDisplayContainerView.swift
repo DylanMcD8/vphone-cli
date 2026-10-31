@@ -13,6 +13,21 @@ import VPhoneCoreKit
 final class VPhoneDisplayContainerView: NSView {
     let displayView: NSView
     private let viewportView = NSView()
+    private let deviceBackingLayer = CAShapeLayer()
+    private var deviceFrameView: VPhoneHomeViewFrameView?
+    private var showsDeviceFrame = false
+
+    func setHomeViewFrame(_ enabled: Bool) {
+        if enabled, deviceFrameView == nil, let frame = VPhoneHomeViewFrameView() {
+            deviceFrameView = frame
+            addSubview(frame)
+        }
+        showsDeviceFrame = enabled && deviceFrameView != nil
+        deviceFrameView?.isHidden = !showsDeviceFrame
+        deviceBackingLayer.isHidden = !showsDeviceFrame
+        layer?.backgroundColor = showsDeviceFrame ? NSColor.clear.cgColor : NSColor.black.cgColor
+        needsLayout = true
+    }
     var backingPanelSize: NSSize = .zero { didSet { needsLayout = true } }
     /// The guest panel's size in points, portrait.
     var panelSize: NSSize = .zero {
@@ -43,6 +58,10 @@ final class VPhoneDisplayContainerView: NSView {
         super.init(frame: .zero)
         wantsLayer = true
         layer?.backgroundColor = NSColor.black.cgColor
+        deviceBackingLayer.fillColor = NSColor.black.cgColor
+        deviceBackingLayer.actions = ["path": NSNull()]
+        deviceBackingLayer.isHidden = true
+        layer?.addSublayer(deviceBackingLayer)
         displayView.autoresizingMask = []
         viewportView.wantsLayer = true
         viewportView.layer?.masksToBounds = true
@@ -233,18 +252,27 @@ final class VPhoneDisplayContainerView: NSView {
 
     override func layout() {
         super.layout()
+        let geometry = VPhoneHomeViewFrame.geometry(in: bounds)
+        deviceFrameView?.frame = geometry.frame
+        // Opaque backing beneath the aperture and bezel prevents fractional
+        // pixel gaps from revealing the desktop, without changing touch mapping.
+        let inset = geometry.frame.width * 0.02
+        deviceBackingLayer.path = CGPath(roundedRect: geometry.frame.insetBy(dx: inset, dy: inset),
+                                        cornerWidth: geometry.frame.width * 0.2,
+                                        cornerHeight: geometry.frame.height * 0.2, transform: nil)
+        let available = showsDeviceFrame ? geometry.screen : bounds
         let size = panelSize.width > 0
-            ? VPhoneDisplayOrientation.fittedSize(panel: panelSize, angle: angle, in: bounds.size)
-            : bounds.size
+            ? VPhoneDisplayOrientation.fittedSize(panel: panelSize, angle: angle, in: available.size)
+            : available.size
         // Sized unturned, then turned about its center.
         viewportView.frameCenterRotation = 0
         viewportView.frame = NSRect(
-            x: bounds.midX - size.width / 2,
-            y: bounds.midY - size.height / 2,
+            x: available.midX - size.width / 2,
+            y: available.midY - size.height / 2,
             width: size.width,
             height: size.height,
         )
-let backing = backingPanelSize.width > 0 ? backingPanelSize : panelSize
+        let backing = backingPanelSize.width > 0 ? backingPanelSize : panelSize
         let scale = panelSize.width > 0 ? size.width / panelSize.width : 1
         let full = NSSize(width: backing.width * scale, height: backing.height * scale)
         displayView.frameCenterRotation = 0

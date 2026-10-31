@@ -43,6 +43,7 @@ class VPhoneMenuController {
     }
     var onHardwareKeyboardChange: ((Bool) async throws -> Void)?
     var onFrameRateDisplayChange: ((Bool) -> Void)?
+    var onHomeViewFrameChange: ((Bool) -> Void)?
     /// Saves the unlock-at-startup setting to this machine's config.plist.
     var onUnlockAtStartupChange: ((Bool) throws -> Void)?
     var unlockAtStartupItem: NSMenuItem?

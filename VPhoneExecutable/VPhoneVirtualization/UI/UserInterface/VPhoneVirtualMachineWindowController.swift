@@ -125,6 +125,11 @@ class VPhoneVirtualMachineWindowController: NSObject, NSWindowDelegate {
         setMinimumContentSize(for: .portrait, on: window)
         window.title = name
         window.contentView = container
+        if control.isHomeViewGuest {
+            displayContainer?.setHomeViewFrame(VPhoneHomeViewFrame.isEnabled)
+            window.isOpaque = !VPhoneHomeViewFrame.isEnabled
+            window.backgroundColor = VPhoneHomeViewFrame.isEnabled ? .clear : .black
+        }
 
         // The scene belongs to the VM, not to the app: every VM directory keeps
         // its own window frame, and a newly created VM opens centered instead
@@ -215,6 +220,15 @@ class VPhoneVirtualMachineWindowController: NSObject, NSWindowDelegate {
     }
 
     // MARK: - Fold Panel Persistence
+
+    func setHomeViewFrame(_ enabled: Bool) {
+        guard control?.isHomeViewGuest == true, let window = displayWindow else { return }
+        displayContainer?.setHomeViewFrame(enabled)
+        window.isOpaque = !enabled
+        window.backgroundColor = enabled ? .clear : .black
+        window.contentView?.layoutSubtreeIfNeeded()
+        window.invalidateShadow()
+    }
 
     /// Records the fold's position for the next start; nil (a disconnect)
     /// leaves whatever is recorded alone — a reboot does not unfold the
@@ -439,6 +453,17 @@ class VPhoneVirtualMachineWindowController: NSObject, NSWindowDelegate {
               let frame = window.contentView?.superview
         else { return }
         window.titleVisibility = .hidden
+        if control?.isHomeViewGuest == true {
+            // A clear window background also clears AppKit's titlebar fill.
+            // Give just the titlebar its own material, leaving the device's
+            // outer corners transparent.
+            let background = NSVisualEffectView(frame: titlebar.bounds)
+            background.material = .titlebar
+            background.blendingMode = .behindWindow
+            background.state = .followsWindowActiveState
+            background.autoresizingMask = [.width, .height]
+            titlebar.addSubview(background, positioned: .below, relativeTo: nil)
+        }
 
         let title = NSTextField(labelWithString: name)
         title.font = .systemFont(ofSize: NSFont.systemFontSize + 2, weight: .bold)
@@ -477,7 +502,7 @@ class VPhoneVirtualMachineWindowController: NSObject, NSWindowDelegate {
                 let osName = homePodGuest ? "HomePod" : usesTVOS ? "tvOS" : "iOS"
                 parts.append("\(osName) \(version)")
             }
-            if let address = control.guestIPAddress, !address.isEmpty {
+            if frameRate == nil, let address = control.guestIPAddress, !address.isEmpty {
                 parts.append(address)
             }
         }

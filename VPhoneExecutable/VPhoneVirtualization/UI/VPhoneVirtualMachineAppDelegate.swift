@@ -247,6 +247,9 @@ class VPhoneVirtualMachineAppDelegate: NSObject, NSApplicationDelegate {
             mc.onFrameRateDisplayChange = { [weak wc] enabled in
                 wc?.setFrameRateDisplay(enabled)
             }
+            mc.onHomeViewFrameChange = { [weak wc] enabled in
+                wc?.setHomeViewFrame(enabled)
+            }
             mc.onUnlockAtStartupChange = { [config = command.config] enabled in
                 let manifest = try VPhoneVirtualMachineManifest.load(from: config)
                 try manifest.updating(unlocksAtStartup: enabled).write(to: config)
