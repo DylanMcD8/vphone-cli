@@ -1,6 +1,6 @@
 # vphone-cli for HomeView
 
-![HomeView emulator showing the dimensional clock face and app dashboard](Documents/homeview-preview.jpg)
+![HomeView emulator showing the dimensional clock face and app dashboard](Documents/homeview-sim-screenshots.webp)
 
 ## Set up HomeView with a coding agent
 
