@@ -89,6 +89,8 @@ reversible setup steps; pause when you genuinely need my input or a manual
 Mac security/administrator action. Do not claim success from a build alone.
 ```
 
+![HomeView emulator showing the dimensional clock face and app dashboard](Documents/homeview-preview.jpg)
+
 ---
 
 <div align="right"><a href="Documents/README.md">Docs</a> · <strong>English</strong> · <a href="Documents/README_zh.md">中文</a> · <a href="Documents/README_ja.md">日本語</a> · <a href="Documents/README_ko.md">한국어</a></div>
