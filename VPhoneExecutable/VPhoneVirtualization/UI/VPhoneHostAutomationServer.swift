@@ -17,13 +17,14 @@ import VPhoneCoreKit
 /// The socket exists in both windowed and headless launches. With a window,
 /// taps and swipes go through the VM view and the compact image is captured
 /// from the display. Headless, taps and swipes go to vphoned's `input.touch`
-/// and the image comes from the guest's `screen.screenshot`.
+/// and the image comes from the guest's `screen.screenshot`. Windowed HomeView
+/// saves use the original VM display pixels for lossless PNG.
 ///
 /// Every response includes an `"image"` field with a compact base64-encoded
 /// color JPEG of the current screen (unless `"screen":false` is sent).
 ///
 /// Supported commands:
-///   {"t":"screenshot"}                          → full-res save to Desktop (or explicit path)
+///   {"t":"screenshot"}                          → full-res save to Desktop (windowed HomeView: PNG)
 ///   {"t":"screenshot","path":"/tmp/shot.png"}   → save to explicit path (PNG/JPEG by extension)
 ///   {"t":"tap","x":645,"y":1398}                → tap at pixel coordinates
 ///   {"t":"swipe","x1":645,"y1":2600,"x2":645,"y2":1400,"ms":300}  → swipe
@@ -201,6 +202,12 @@ class VPhoneHostAutomationServer {
                 return Self.reply(ok: true)
 
             case "screenshot":
+                if control?.isHomeViewGuest == true, let view = windowedView {
+                    let image = try await screenRecorder.captureStillImage(from: view)
+                    let path = (json["path"] as? String).map { URL(fileURLWithPath: $0) }
+                    let url = try screenRecorder.saveDisplayScreenshot(image: image, to: path)
+                    return Self.reply(ok: true, path: url.path, image: compactJPEG(image))
+                }
                 let image = try await automationScreenshot()
                 let url = if let outputPath = json["path"] as? String {
                     try screenRecorder.saveScreenshot(jpegData: image, to: URL(fileURLWithPath: outputPath))

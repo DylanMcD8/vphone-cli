@@ -80,8 +80,13 @@ extension VPhoneMenuController {
 
         Task { @MainActor in
             do {
-                let image = try await control.screenshotJPEG()
-                try recorder.copyScreenshotToPasteboard(jpegData: image)
+                if control.isHomeViewGuest, let view = activeCaptureView() {
+                    let image = try await recorder.captureStillImage(from: view)
+                    try recorder.copyLosslessScreenshotToPasteboard(image: image)
+                } else {
+                    let image = try await control.screenshotJPEG()
+                    try recorder.copyScreenshotToPasteboard(jpegData: image)
+                }
                 showCaptureAlert(
                     title: "Screenshot", message: "Screenshot copied to the Mac clipboard.", style: .informational,
                 )
@@ -106,8 +111,14 @@ extension VPhoneMenuController {
 
         Task { @MainActor in
             do {
-                let image = try await control.screenshotJPEG()
-                let url = try recorder.saveScreenshot(jpegData: image)
+                let url: URL
+                if control.isHomeViewGuest, let view = activeCaptureView() {
+                    let image = try await recorder.captureStillImage(from: view)
+                    url = try recorder.saveDisplayScreenshot(image: image)
+                } else {
+                    let image = try await control.screenshotJPEG()
+                    url = try recorder.saveScreenshot(jpegData: image)
+                }
                 showCaptureAlert(
                     title: "Screenshot", message: VPhoneLocalization.format("Saved to %@", url.path),
                     style: .informational,

@@ -26,9 +26,12 @@ This branch adds the following to the HomeView emulator:
   and IconServices fixes address severe stalls and missing dashboard icons.
 - **Accurate touch input:** clicking and dragging continue to map correctly
   after resizing the emulator window.
-- **Screenshot shortcut:** save screenshots with **Control–Command–S**.
+- **Lossless HomeView screenshots:** in the HomeView app, **Control–Command–S** saves a native-resolution
+  PNG directly from the VM display, without JPEG compression or window scaling.
+  **Control–Command–C** copies a PNG to the Mac clipboard. Captures contain the
+  guest display, without the host toolbar or device frame.
 - **Date and time controls:** set a custom guest clock, restore the Mac’s time,
-  or choose **Device → Set to Marketing Date & Time** (**⌘D**) for November 13, 2026,
+  or choose **Device → Set to Marketing Date & Time** (**Control–Command–D**) for November 13, 2026,
   10:09:20 AM in the Mac’s time zone. Manual clocks continue ticking.
 - **Setup bypass:** a reversible option gets to the dashboard without nearby
   iPhone setup; it does not configure an Apple Account or HomeKit.

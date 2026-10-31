@@ -119,6 +119,33 @@ class VPhoneScreenRecorder {
         return url
     }
 
+    func copyLosslessScreenshotToPasteboard(image: CGImage) throws {
+        guard let data = VPhoneGraphicsDisplayCapture.pngData(for: image) else {
+            throw CaptureError.encodingFailed
+        }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        guard pasteboard.setData(data, forType: .png) else { throw CaptureError.clipboardWriteFailed }
+    }
+
+    /// HomeView captures come directly from VZ's display buffer. An explicit
+    /// JPEG automation path still opts into JPEG, while the default is PNG.
+    func saveDisplayScreenshot(image: CGImage, to requestedURL: URL? = nil) throws -> URL {
+        let url = requestedURL ?? screenshotOutputURL().deletingPathExtension().appendingPathExtension("png")
+        let data: Data?
+        if ["jpg", "jpeg"].contains(url.pathExtension.lowercased()) {
+            data = NSBitmapImageRep(cgImage: image).representation(using: .jpeg, properties: [.compressionFactor: 1])
+        } else if url.pathExtension.lowercased() == "png" {
+            data = VPhoneGraphicsDisplayCapture.pngData(for: image)
+        } else {
+            throw CaptureError.encodingFailed
+        }
+        guard let data else { throw CaptureError.encodingFailed }
+        try data.write(to: url, options: .atomic)
+        print("[record] display screenshot saved - \(url.path) (\(image.width)x\(image.height))")
+        return url
+    }
+
     func copyScreenshotToPasteboard(jpegData: Data) throws {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()

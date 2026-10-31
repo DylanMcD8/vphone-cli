@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import ObjectiveC.runtime
 import Virtualization
 
@@ -10,6 +11,18 @@ import Virtualization
 /// same with and without a VM window. The buffer is in the panel's
 /// orientation, whatever the guest interface shows.
 enum VPhoneGraphicsDisplayCapture {
+    /// Encode the original display pixels directly, without a JPEG stage or
+    /// resizing to the host window. ImageIO retains the image's color profile.
+    static func pngData(for image: CGImage) -> Data? {
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else {
+            return nil
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
+    }
+
     private typealias CompletionBlock = @convention(block) (AnyObject?) -> Void
     private typealias ScreenshotIMP = @convention(c) (AnyObject, Selector, AnyObject) -> Void
 

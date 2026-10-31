@@ -151,7 +151,7 @@ extension VPhoneMenuController {
         let setDate = makeItem("Set Date & Time…", action: #selector(setGuestDateTime), symbol: "calendar.badge.clock")
         let marketingDate = makeItem("Set to Marketing Date & Time", action: #selector(setMarketingDateTime), symbol: "calendar")
         marketingDate.keyEquivalent = "d"
-        marketingDate.keyEquivalentModifierMask = [.command]
+        marketingDate.keyEquivalentModifierMask = [.command, .control]
         marketingDate.toolTip = VPhoneLocalization.text("Set the guest to November 13, 2026 at 10:09:20 AM in the Mac’s time zone. Its clock continues ticking.")
         let resetDate = makeItem("Use Mac’s Date & Time", action: #selector(resetGuestDateTime), symbol: "clock.arrow.circlepath")
         clockOverrideItems = [setDate, marketingDate, resetDate]
