@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Home Camera",
+    "provider": "com.apple.Home.CameraFace",
+    "descriptor": "HomeCameraFace"
+  },
+  {
+    "name": "Photos Clock",
+    "provider": "com.apple.PhotosUIPrivate.PhotosClockPoster",
+    "descriptor": "PhotosClockPoster"
+  },
+  {
+    "name": "Photos Memories",
+    "provider": "com.apple.PhotosUIPrivate.PhotosMemoriesPoster",
+    "descriptor": "PhotosMemoriesPoster"
+  },
+  {
+    "name": "Home Modular \u2014 four tiles",
+    "provider": "com.apple.Home.HomeFace",
+    "descriptor": "HomeControlFace-featured9"
+  },
+  {
+    "name": "Home Modular \u2014 six tiles",
+    "provider": "com.apple.Home.HomeFace",
+    "descriptor": "HomeControlFace-featured7"
+  },
+  {
+    "name": "Weather \u2014 hourly",
+    "provider": "com.apple.weather.face",
+    "descriptor": "weather-hourly"
+  },
+  {
+    "name": "Weather \u2014 daily",
+    "provider": "com.apple.weather.face",
+    "descriptor": "weather-daily"
+  },
+  {
+    "name": "Calendar \u2014 large date, Sage",
+    "provider": "com.apple.CalendarPebble.CalendarPosterExtension",
+    "descriptor": "gallery-7"
+  },
+  {
+    "name": "Dimensional Clock \u2014 silver",
+    "provider": "com.apple.ClockFacePosters.DimensionalAnalogPosterExtension",
+    "descriptor": "gallery4-silver-dynamic-0.0-3.0"
+  },
+  {
+    "name": "Flow \u2014 rainbow cycle",
+    "provider": "com.apple.ClockFacePosters.ResponsiveArtPosterExtension",
+    "descriptor": "gallery4-ResponsiveArtPosterExtension.ResponsiveArtFaceModel"
+  },
+  {
+    "name": "Digital Clock \u2014 stacked",
+    "provider": "com.apple.ClockFacePosters.SimpleDigitalPosterExtension",
+    "descriptor": "digital-color-6-dynamic-tokyo-arabic-largeStacked-widget-com.apple.weather.complication.aqi-widget-com.apple.weather.complication.conditions"
+  },
+  {
+    "name": "Analog Clock \u2014 purple, seconds",
+    "provider": "com.apple.ClockFacePosters.SimpleClockPosterExtension",
+    "descriptor": "analog-purple-dynamic-soft-arabic-numeralsDial-square-date-StringWidgetDateFormat(title: \"Digital Time\", format: \"h:mm:ss\")"
+  },
+  {
+    "name": "Snoopy \u2014 Woodstock Yellow",
+    "provider": "com.apple.WatchFacesWallpaperSupport.SnoopyPoster",
+    "descriptor": "snoopy-woodstockYellow-dynamic-date-StringWidgetDateFormat(title: \"Month\", format: \"LLLL\")"
+  },
+  {
+    "name": "Modular Widgets \u2014 green",
+    "provider": "com.apple.WidgetFace.WidgetFaceExtension",
+    "descriptor": "modular-gallery-1"
+  }
+]

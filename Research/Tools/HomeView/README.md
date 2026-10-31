@@ -51,6 +51,27 @@ The helper uses the guest mobile UID 501 and narrowly scoped PosterBoard
 service entitlements. It is intended for this already-patched research guest,
 not stock Apple hardware or execution on the Mac.
 
+### Additional built-in faces
+
+`AdditionalFaces.json` records 14 additional descriptors present in the tested
+firmware: Home Camera, Photos Clock, Photos Memories, four- and six-tile Home
+Modular samples, hourly/daily Weather, and Calendar, analog/digital/dimensional
+clock, Flow, Snoopy, and widget presets. Use the explicit provider action:
+
+```js
+print(proc.run('/var/tmp/home-modular-control', [
+  'create-provider', 'com.apple.Home.CameraFace', 'HomeCameraFace'
+]));
+```
+
+Check the existing provider/descriptor pairs before creating entries to avoid
+duplicates. Creation can automatically select the new face: record and restore
+the previous selection after a batch. Do not overwrite existing configuration
+directories. The local batch added 14 entries to the existing 10, and all 76
+original configuration files remained byte-identical. The prior selection was
+restored afterward. Camera/Photos faces need corresponding content; adding
+presets does not repair Weather authentication or download Snoopy animations.
+
 Verified on the local VM: the eight original faces remained, the normal face
 rendered six empty tiles without Home setup, and `HomeControlFace-featured8`
 rendered nine populated tiles. The user confirmed the sample display worked.
