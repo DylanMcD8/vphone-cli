@@ -6,8 +6,9 @@
 
 This branch adds the following to the HomeView emulator:
 
-- **Custom HomeView app icon:** builds Dylan’s Icon Composer artwork and uses
-  its rendered icon in the emulator’s custom Dock tile.
+- **Native HomeView app and icon:** optional `.app` packaging uses Dylan’s
+  Icon Composer artwork with standard macOS rendering and no Dock nameplate.
+  See [native app packaging](Research/Tools/HomeView/README.md#native-homeview-app-and-icon).
 - **Responsive rendering and restored icons:** scoped BreadBoard Metal compiler
   and IconServices fixes address severe stalls and missing dashboard icons.
 - **Accurate touch input:** clicking and dragging continue to map correctly

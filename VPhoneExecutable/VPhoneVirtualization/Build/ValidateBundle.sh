@@ -4,6 +4,13 @@ set -euo pipefail
 
 root="$(cd "${0:a:h}/../../.." && pwd)"
 bundle="${1:-$root/.build/XcodeBundle/Build/Products/Debug/VPhone.bundle}"
+homeview_app=false
+if [[ ${2:-} == --homeview-app ]]; then
+    homeview_app=true
+elif [[ -n ${2:-} ]]; then
+    print -u2 'Unknown validation mode'
+    exit 2
+fi
 macos="$bundle/Contents/MacOS"
 resources="$bundle/Contents/Resources"
 frameworks="$bundle/Contents/Frameworks"
@@ -221,13 +228,27 @@ done
 
 /usr/bin/codesign --verify --strict "$bundle"
 
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$bundle/Contents/Info.plist")" == "BNDL" ]] || {
-    print -u2 "The product is not a generic bundle"
-    exit 1
-}
-if /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist" >/dev/null 2>&1; then
-    print -u2 "The container must not declare an executable"
-    exit 1
+if $homeview_app; then
+    info="$bundle/Contents/Info.plist"
+    [[ "$bundle" == *.app &&
+       "$(/usr/bin/plutil -extract CFBundlePackageType raw -o - "$info")" == APPL &&
+       "$(/usr/bin/plutil -extract CFBundleExecutable raw -o - "$info")" == vphone-vm &&
+       "$(/usr/bin/plutil -extract CFBundleIdentifier raw -o - "$info")" == com.vphone.homeview.simulator &&
+       "$(/usr/bin/plutil -extract VPhoneDefaultMachineConfig raw -o - "$info")" == /* &&
+       "$(/usr/bin/plutil -extract CFBundleIconName raw -o - "$info")" == 'HomeView Simulator' &&
+       -s "$resources/Assets.car" && -s "$resources/HomeView Simulator.icns" ]] || {
+        print -u2 'Invalid standalone HomeView application metadata or icon'
+        exit 1
+    }
+else
+    [[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundlePackageType' "$bundle/Contents/Info.plist")" == "BNDL" ]] || {
+        print -u2 "The product is not a generic bundle"
+        exit 1
+    }
+    if /usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Contents/Info.plist" >/dev/null 2>&1; then
+        print -u2 "The container must not declare an executable"
+        exit 1
+    fi
 fi
 # Host programs live in Contents/MacOS and guest payloads in guest-resources.
 # The build platform keeps an iOS binary from landing among the host programs.
@@ -261,10 +282,14 @@ while IFS= read -r file; do
     esac
 done < <(/usr/bin/find "$bundle/Contents" -type f)
 bundle_entitlements="$(/usr/bin/codesign -d --entitlements - --xml "$bundle" 2>/dev/null || true)"
-[[ "$bundle_entitlements" != *'com.apple.private.virtualization'* ]] || {
-    print -u2 "The bundle must not carry private virtualization entitlements"
-    exit 1
-}
+if ! $homeview_app; then
+    [[ "$bundle_entitlements" != *'com.apple.private.virtualization'* ]] || {
+        print -u2 "The bundle must not carry private virtualization entitlements"
+        exit 1
+    }
+fi
+# In the standalone app this is also its main executable; the private
+# entitlements still belong only to vphone-vm, checked identically below.
 vm_entitlements="$(/usr/bin/codesign -d --entitlements - --xml "$macos/vphone-vm" 2>/dev/null)"
 [[ "$vm_entitlements" == *'com.apple.private.virtualization'* ]] || {
     print -u2 "VM private entitlements are missing"

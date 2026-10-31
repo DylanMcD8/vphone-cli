@@ -10,6 +10,37 @@ zsh Research/Tools/HomeView/Build.zsh
 
 The outputs go to `.build/HomeViewResearchTools`, which is ignored by Git.
 
+## Native HomeView app and icon
+
+The core build remains `VPhone.bundle` for existing CLI and Launchpad workflows.
+For a standard Dock icon with the system-rendered Icon Composer appearances,
+package a separate `HomeView.app` after building the bundle:
+
+```sh
+zsh VPhoneExecutable/VPhoneVirtualization/Build/PackageHomeViewApp.sh \
+  .build/XcodeBundle/Build/Products/Debug/VPhone.bundle \
+  "$HOME/HomeView-OS/data/machines/HomeView/config.plist" \
+  "$HOME/HomeView-OS/HomeView.app"
+```
+
+Use your actual machine config path and a new output destination. The script
+copies the application code and resources, not the VM disk. It records the local
+config path in the app's Info.plist, so double-clicking opens that existing VM.
+Explicit CLI arguments override the default. Do not redistribute this locally
+configured app as a portable VM or commit its machine path to Git.
+
+Run the app's `Contents/MacOS/vphone-cli host preflight`. If it reports an AMFI
+block, the owner must run the exact administrator allowlist command it prints.
+The application signature includes its Info.plist, so signing the `.app`
+requires fresh authorization even if the preceding core bundle was allowed.
+Stop an existing instance of the same VM before opening the app. Its CLI tools
+remain in `Contents/MacOS`, so existing launch scripts can point there too.
+
+The native app leaves `NSApplication.applicationIconImage` and the Dock tile
+untouched: macOS renders `Assets.car` directly, without the nameplate or a
+flattened image override. The original Icon Composer document is retained in
+`VPhoneExecutable/VPhoneVirtualization/Resources/HomeView Simulator.icon`.
+
 ## Location Services
 
 `homeview-location-control` uses the native `CLLocationManager` Settings API

@@ -21,4 +21,16 @@ import VPhoneVirtualMachineKit
 // so every such write fails with EPIPE, which each caller already handles.
 signal(SIGPIPE, SIG_IGN)
 
-VPhoneGuestApp.run(VPhoneBootCommand.parseOrExit())
+// A standalone HomeView.app can bind to an existing machine at packaging time.
+// Explicit CLI arguments always win; the ordinary VPhone.bundle has no default.
+var bootArguments = Array(CommandLine.arguments.dropFirst())
+if bootArguments.isEmpty,
+   let config = Bundle.main.object(forInfoDictionaryKey: "VPhoneDefaultMachineConfig") as? String,
+   !config.isEmpty
+{
+    bootArguments = [
+        "--config", config,
+        "--vphoned-bin", VPhoneResources.resolve().vphoned(for: .homeView).path,
+    ]
+}
+VPhoneGuestApp.run(VPhoneBootCommand.parseOrExit(bootArguments))

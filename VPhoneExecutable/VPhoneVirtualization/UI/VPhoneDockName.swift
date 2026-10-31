@@ -46,6 +46,12 @@ enum VPhoneDockName {
     @MainActor
     static func label(_ name: String) {
         guard !name.isEmpty else { return }
+        // A packaged application gets its layered Icon Composer icon directly
+        // from Launch Services. A custom view or applicationIconImage override
+        // flattens that icon and prevents the system appearance from applying.
+        guard Bundle.main.object(forInfoDictionaryKey: "CFBundlePackageType") as? String != "APPL" else {
+            return
+        }
         // This executable lives in a BNDL rather than an APPL. AppKit can
         // therefore choose the generic bundle icon despite CFBundleIconName.
         // Load actool's ICNS rendition before the custom Dock tile captures it.
