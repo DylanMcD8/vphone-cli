@@ -1,6 +1,6 @@
 # vphone-cli for HomeView
 
-![HomeView emulator showing the dimensional clock face and app dashboard](Documents/homeview-sim-screenshots.webp)
+![HomeView Simulator app icon above the Home Modular face and pink app dashboard](Documents/homeview-simulator-hero.webp)
 
 ## Features and Enhancements
 
