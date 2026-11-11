@@ -7,8 +7,13 @@
 This branch adds the following to the HomeView emulator:
 
 This is a fork of [Lakr233/vphone-cli](https://github.com/Lakr233/vphone-cli),
-including the merged HomeView support from PR #786 and the enhancements below.
+including upstream 2.16.1 (through `d1c36fa8`) and the enhancements below.
 Use this fork's `homeview` branch for the complete setup.
+
+Upstream additions include a custom location picker, Location Services API,
+screenshot cropping/scaling controls, and a system-camera source. The camera
+source has not been validated on HomeView; pairing and recognition limitations
+still apply. Our lossless PNG shortcuts and manual marketing clock are preserved.
 
 - **HomeView Controls panel:** **Device → HomeView Controls…** provides guest
   toggles for display keep-awake, the cosmetic Wi-Fi indicator, Location
@@ -111,7 +116,7 @@ a short progress/resume note in that folder for any reboot or manual step.
    git clone --branch homeview https://github.com/DylanMcD8/vphone-cli.git vphone-cli
    Run the clone command from the working folder, then enter vphone-cli. Read
    AGENTS.md, HOMEVIEW.md, Skills/vphone-guest-control/SKILL.md and its relevant
-   references, Documents/Guides/host-setup.md, Documents/Guides/create-and-run.md,
+   references, Documents/en/get-started/host-setup.md, Documents/en/get-started/quick-start.md,
    Research/Firmware/homeview_bringup.md, Research/Guest/host_clock_sync.md,
    and Research/Tools/HomeView/README.md. Use this branch's code and guides,
    not an upstream release that may omit these HomeView fixes. Historical
@@ -222,7 +227,7 @@ that every required restore ticket remains available.
 
 ---
 
-<div align="right"><a href="Documents/README.md">Docs</a> · <strong>English</strong> · <a href="Documents/README_zh.md">中文</a> · <a href="Documents/README_ja.md">日本語</a> · <a href="Documents/README_ko.md">한국어</a></div>
+<div align="right"><a href="https://lakr233.github.io/vphone-cli/">Docs</a> · <strong>English</strong> · <a href="https://lakr233.github.io/vphone-cli/zh/">中文</a> · <a href="https://lakr233.github.io/vphone-cli/ja/">日本語</a> · <a href="https://lakr233.github.io/vphone-cli/ko/">한국어</a></div>
 
 # vphone-cli
 
@@ -239,38 +244,17 @@ Run a virtual iPhone on an Apple Silicon Mac.
 
 vphone-cli runs iOS with Apple's Virtualization.framework and PCC research virtual machines, for security research, reverse engineering, and debugging.
 
-- **Graphical Window:** Use the virtual iPhone's screen on your Mac, browse apps and files, and take screenshots and screen recordings.
-- **Custom Firmware:** The system comes pre-patched, and you can install a package environment.
-- **Backup and Cloning:** You can export, import, and clone VMs.
-- **Automation API:** An optional local HTTP and WebSocket interface.
-- **No Extra Dependencies:** Needs no Xcode, Python, or Homebrew at runtime.
+## Documentation
 
-## Requirements
+Everything else lives on the documentation site: **<https://lakr233.github.io/vphone-cli/>**
 
-- A physical Apple Silicon Mac running macOS 15 or newer. It does not work in a macOS VM.
-- Free disk space. Each VM has a 64 GB virtual disk by default, and firmware takes more.
-- A network connection. Restoring the system fetches signing tickets online.
-- Adjusted security settings. Boot into macOS Recovery, run these commands in Terminal, then restart:
+- [Quick Start](https://lakr233.github.io/vphone-cli/get-started/quick-start): requirements, host settings, and your first VM with Launchpad.
+- [Manual](https://lakr233.github.io/vphone-cli/get-started/overview): machines, firmware, storage, networking, and troubleshooting, in English, 中文, 日本語 and 한국어.
+- [Research Notes](https://lakr233.github.io/vphone-cli/research/): patches, boot chain, restore, and the automation API reference.
 
-  ```sh
-  csrutil enable --without debug
-  csrutil allow-research-guests enable
-  ```
+The sources of the site are in [`Documents/`](Documents/) and [`Research/`](Research/).
 
-  SIP stays enabled, with only the debugging restrictions relaxed. For details, see [Host Setup](Documents/Guides/host-setup.md).
-
-## Get Started
-
-1. Download `vphone-launchpad-<version>-notarized.zip` from the [latest release](https://github.com/Lakr233/vphone-cli/releases/latest), unzip it, and open it. Not every release is notarized. If the latest one has no `-notarized` file, pick a notarized version from [Downloads](Documents/Downloads/README.md).
-2. In **Host Setup**, grant Developer Tools access and install the helper.
-3. In **Core Bundle**, click **Download and Install**.
-4. In **Machines**, click **New Machine**, choose a firmware pairing, and click **Create**.
-
-Launchpad downloads the firmware, patches it, restores the system, and boots the VM. To use your own iPhone and cloudOS IPSWs, see [Compatibility](Documents/Guides/compatibility.md).
-
-To install a package manager in the VM, see [Package Environment](Documents/Guides/package-environment.md).
-
-### Let an agent do it
+## Let an Agent Install It
 
 If you use a coding agent (Claude Code, Codex, or similar) on this Mac, paste the prompt below instead of following the steps by hand. The agent reads the vphone skill, checks what is already set up, installs Launchpad and `VPhone.bundle`, and stops to ask when a step needs you, such as an administrator password or a change in macOS Recovery.
 
@@ -286,57 +270,11 @@ create a machine until I confirm the firmware and the free disk space. When a
 step needs me, tell me exactly what to do and wait.
 ```
 
-## Command Line
-
-Launchpad drives VMs through the `vphone-cli` inside `VPhone.bundle`. You can also run it in Terminal:
-
-```sh
-vphone-cli vm list
-vphone-cli vm launch myphone
-vphone-cli vm export myphone --out myphone.tzst
-```
-
-VMs are stored in `~/.vphone/`. Run `vphone-cli <group> --help` to see all commands. To create a VM without Launchpad, see [Create and Run](Documents/Guides/create-and-run.md).
-
-To turn on the automation API, add `--api-listen 127.0.0.1:8765` at launch and use the token it prints. See the [API documentation](Research/vphoned_http_api.md).
-
-## Boot ROMs
-
-New VMs start from two open-source ROMs instead of the closed ones in Virtualization.framework:
-
-- [OpenAVB](https://github.com/owngoal-dev/OpenAVB) replaces AVPBooter, the boot ROM. It needs no patch, so `fw patch` leaves it alone.
-- [OpenSEP](https://github.com/owngoal-dev/OpenSEP) replaces AVPSEPBooter, the SEP boot ROM.
-
-With both, nothing Apple wrote runs before iBoot and SEPOS. Both ship in `VPhone.bundle`, prebuilt from pinned upstream commits. Each one's README ([OpenAVB](VPhoneExecutable/VPhoneVirtualization/Resources/OpenAVB/README.md), [OpenSEP](VPhoneExecutable/VPhoneVirtualization/Resources/OpenSEP/README.md)) says how to rebuild it and check it byte for byte.
-
-VMs created by earlier versions keep Apple's ROMs. A VM switches either way without a restore, from its next start:
-
-```sh
-vphone-cli vm config myphone --rom openavb --seprom opensep   # open-source ROMs
-vphone-cli vm config myphone --rom apple --seprom apple       # Apple's ROMs
-```
-
-`vphone-cli vm info myphone` shows which ROMs a VM uses. Restoring a VM that boots OpenAVB needs `VPhone.bundle` 2.10.1 or newer. For the details, see [OpenAVB](Research/Firmware/openavb_boot_rom.md) and [OpenSEP](Research/Firmware/opensep_sep_rom.md) in the research notes.
-
-## Documentation
-
-| Document | Contents |
-| --- | --- |
-| [Downloads](Documents/Downloads/README.md) | Notarized Launchpad versions and matching `VPhone.bundle` versions |
-| [Host Setup](Documents/Guides/host-setup.md) | SIP and AMFI settings, building from source, environment checks |
-| [Create and Run](Documents/Guides/create-and-run.md) | Firmware sources, the creation process, storage and backups |
-| [Snapshots](Documents/Guides/snapshots.md) | Save a stopped VM's disk state and revert to it |
-| [Compatibility](Documents/Guides/compatibility.md) | Verified firmware pairings |
-| [iPadOS Guests](Documents/Guides/ipados.md) | Run iPadOS (iPad mini A17 Pro) instead of iOS |
-| [Package Environment](Documents/Guides/package-environment.md) | Installing and removing a package manager in the VM |
-| [Troubleshooting](Documents/Guides/troubleshooting.md) | Common errors and how to fix them |
-| [Networking](Documents/Guides/networking.md) | Network modes, and `tunnel` for a Mac behind a VPN or proxy |
-| [Launchpad Command Line](Documents/Guides/launchpad-cli.md) | Install and test a local build with `vphone-launchpad-cli` |
-| [Contributing](Documents/README.md#for-contributors) | Project structure, building from source, research notes |
-
-If these do not solve your problem, [open an issue](https://github.com/Lakr233/vphone-cli/issues).
-
 ## Acknowledgements
 
 - [wh1te4ever/super-tart-vphone-writeup](https://github.com/wh1te4ever/super-tart-vphone-writeup)
 - [owngoal-dev/OpenAVB](https://github.com/owngoal-dev/OpenAVB) and [owngoal-dev/OpenSEP](https://github.com/owngoal-dev/OpenSEP), the boot ROMs new VMs start from
+
+## License
+
+vphone-cli is released under the [MIT License](LICENSE).

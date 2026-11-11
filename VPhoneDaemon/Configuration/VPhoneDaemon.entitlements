@@ -17,6 +17,8 @@
 	<true/>
 	<key>com.apple.locationd.simulation</key>
 	<true/>
+	<key>com.apple.locationd.authorizeapplications</key>
+	<true/>
 	<key>com.apple.lsapplicationworkspace.rebuildappdatabases</key>
 	<true/>
 	<key>com.apple.powerd.lowpowermode.allow</key>
@@ -72,6 +74,8 @@
 	<key>com.apple.frontboard.launchapplications</key>
 	<true/>
 	<key>com.apple.frontboard.shutdown</key>
+	<true/>
+	<key>com.apple.frontboardservices.display-layout-monitor</key>
 	<true/>
 	<key>com.apple.gasgauge.user-access-device</key>
 	<true/>
@@ -341,6 +345,8 @@
 	</array>
 	<key>com.apple.private.vfs.snapshot</key>
 	<true/>
+	<key>com.apple.private.xpc.launchd.userspace-reboot</key>
+	<true/>
 	<key>com.apple.private.xpc.service-attach</key>
 	<true/>
 	<key>com.apple.private.xpc.service-configure</key>
@@ -520,9 +526,12 @@
 		<string>AppleHPMUserClient</string>
 		<string>AppleJPEGDriverUserClient</string>
 		<string>ApplePPMUserClient</string>
+		<string>AppleParavirtDeviceUserClient</string>
 		<string>AppleSPUHIDDeviceUserClient</string>
 		<string>AppleSPUHIDDriverUserClient</string>
 		<string>AppleUSBHostDeviceUserClient</string>
+		<string>AppleVideoToolboxParavirtualizationUserClient</string>
+		<string>AppleVirtIONeuralEngineDeviceUserClient</string>
 		<string>H11ANEInDirectPathClient</string>
 		<string>IOAVControllerConcreteUserClient</string>
 		<string>IOAccelContext</string>
@@ -539,6 +548,7 @@
 		<string>IOMobileFramebufferUserClient</string>
 		<string>IOReportUserClient</string>
 		<string>IOSurfaceAcceleratorClient</string>
+		<string>IOSurfaceAcceleratorParavirtClient</string>
 		<string>IOSurfaceRootUserClient</string>
 		<string>RootDomainUserClient</string>
 	</array>

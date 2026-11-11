@@ -59,6 +59,13 @@ public enum DyldSharedCacheArm64eX1BootstrapPatcher {
         "/usr/lib/swift/libswiftDispatch.dylib",
     ]
 
+    /// The patches whose undo is kept as words. Logs from 2.15.0 and earlier
+    /// hold them as page runs, which `cfw install` converts once.
+    public static let wordUndoPatchIDs: Set<String> = [
+        FirmwareGuestSystemPatchSet.arm64eX1CacheBootstrap,
+        FirmwareGuestSystemPatchSet.arm64eX1CacheRemaining,
+    ]
+
     public static func patch(
         directory: URL,
         dryRun: Bool = false,
@@ -140,7 +147,14 @@ public enum DyldSharedCacheArm64eX1BootstrapPatcher {
 
         // Planning only reads; each worker gets its own chunk set and Capstone
         // handle, and results keep image order so the writes are deterministic.
-        let workers = max(1, min(ProcessInfo.processInfo.activeProcessorCount, selected.count))
+        #if os(Linux)
+        // The Linux installer reads through SSHFS; each worker's mappings hold
+        // remote SFTP handles as well as host address space.
+        let workerLimit = min(ProcessInfo.processInfo.activeProcessorCount, 4)
+        #else
+        let workerLimit = ProcessInfo.processInfo.activeProcessorCount
+        #endif
+        let workers = max(1, min(workerLimit, selected.count))
         // Largest first, sized by the gap to the next image, so the last few
         // workers are not left with UIKitCore while the rest sit idle.
         let starts = images.map(\.address).sorted()
@@ -173,17 +187,19 @@ public enum DyldSharedCacheArm64eX1BootstrapPatcher {
                 guard next < order.count else { return }
                 let index = order[next]
                 let plan = Result {
-                    let result = try planImage(at: selected[index].address, in: readers[worker], identifier: patchID,
-                                               decoder: decoders[worker])
-                    return ImagePlan(
-                        writes: result.records.map {
-                            Write(
-                                address: UInt64($0.fileOffset),
-                                word: $0.patchedBytes.loadLE(UInt32.self, at: 0),
-                            )
-                        },
-                        unvisitedCandidates: result.unvisitedCandidates,
-                    )
+                    try readers[worker].withScopedMappedReads {
+                        let result = try planImage(at: selected[index].address, in: readers[worker], identifier: patchID,
+                                                   decoder: decoders[worker])
+                        return ImagePlan(
+                            writes: result.records.map {
+                                Write(
+                                    address: UInt64($0.fileOffset),
+                                    word: $0.patchedBytes.loadLE(UInt32.self, at: 0),
+                                )
+                            },
+                            unvisitedCandidates: result.unvisitedCandidates,
+                        )
+                    }
                 }
                 queue.withLock { $0.plans[index] = plan }
             }
@@ -214,6 +230,9 @@ public enum DyldSharedCacheArm64eX1BootstrapPatcher {
         log("  [*] \(label): \(selected.count) image(s), \(lowered) with X1 code, \(skipped.count) skipped, \(writes.count) rewrites, \(unvisited) unvisited candidates")
         guard !dryRun else { return }
 
+        // The originals of the changed instructions, word by word: as page runs
+        // the chunk set would keep 3.3 GB for the whole cache (issue #789).
+        var originals = DyldSharedCacheUndoLog.Words()
         do {
             var index = 0
             var groups = 0
@@ -259,11 +278,14 @@ public enum DyldSharedCacheArm64eX1BootstrapPatcher {
                 for write in writes[first ..< index] {
                     let offset = Int(write.address - start)
                     let replacement = ARM64.encodeU32(write.word)
-                    if after.subdata(in: offset ..< offset + 4) != replacement { changed += 1 }
+                    if after.subdata(in: offset ..< offset + 4) != replacement {
+                        changed += 1
+                        originals.append(vma: write.address, original: before.loadLE(UInt32.self, at: offset))
+                    }
                     after.replaceSubrange(offset ..< offset + 4, with: replacement)
                 }
                 if before != after {
-                    try chunks.write(at: start, after)
+                    try chunks.write(at: start, after, capturingOriginal: false)
                     groups += 1
                     if !skipsUnplannable {
                         log("  0x\(String(start, radix: 16)): \(changed) instruction(s) [\(patchID)]")
@@ -277,11 +299,14 @@ public enum DyldSharedCacheArm64eX1BootstrapPatcher {
                     "\(label) re-attestation skipped \(attestation.skipped.count) pages",
                 )
             }
-            onUndo(chunks.takeUndoLog()!)
+            var undo = chunks.takeUndoLog()!
+            undo.capture(words: originals)
+            onUndo(undo)
             log("  [+] \(label): \(writes.count) instruction rewrites in \(groups) page run(s)")
         } catch {
             var undo = chunks.takeUndoLog()!
-            if !undo.records.isEmpty {
+            undo.capture(words: originals)
+            if !undo.isEmpty {
                 undo.stamp(patchID: patchID)
                 let spans = try undo.restore(patchIDs: undo.patchIDs, in: directory, log: log)
                 _ = try DyldSharedCacheCodeSignature.reattest(

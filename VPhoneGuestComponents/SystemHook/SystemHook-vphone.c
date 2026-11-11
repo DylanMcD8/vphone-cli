@@ -18,6 +18,8 @@
 
 static int vpInXPCProxy;
 static int vpInBootstrap;
+extern void vpInstallSurfaceAdapter(void);
+extern void vpInstallIOS18GPUTransport(void);
 
 static int vpIsBootstrapPath(const char *path, const char *root) {
     if (path && strncmp(path, "/var/jb/", 8) == 0)
@@ -43,6 +45,12 @@ static int vpIsCameraDaemon(const char *path) {
 
 static int vpIsMotionDaemon(const char *path) {
     return vpPathHasSuffix(path, "/usr/libexec/backboardd");
+}
+
+// The device-state relay the hinge feeds, which takes the hinge too; see
+// Hinge/VPhoneHingeRelayResend.h.
+static int vpIsLocationd(const char *path) {
+    return vpPathHasSuffix(path, "/usr/libexec/locationd");
 }
 
 static int vpIsInjectionTarget(const char *path) {
@@ -222,11 +230,19 @@ static void vpLoadLibrary(const char *kind, const char *library) {
 
 // xpcproxy needs this bridge because launchd only spawns the proxy, not its target.
 __attribute__((constructor)) static void vpLogProcess(void) {
+    vpInstallSurfaceAdapter();
+    vpInstallIOS18GPUTransport();
     // Request cross-boot reuse at constructor entry: libCoreFSCache normally
     // invalidates Metal caches when the boot session changes. Preserve an
     // explicit environment setting. See Research/Guest/gpu_acceleration.md.
     if (access("/usr/lib/vphone-metal-cache-reuse", F_OK) == 0) {
         setenv("FS_CACHE_REUSE_ON_REBOOT", "1", 0);
+    }
+    // The paravirtual GPU does not preserve IOSurface attachment yInvert.
+    // Select AppleMetalGLRenderer's native viewport/scissor alternative before
+    // an EAGLContext exists, preserving an explicit application setting.
+    if (access("/usr/lib/vphone-gles-upper-left", F_OK) == 0) {
+        setenv("AGX_GL_VIEWPORT_INVERT_CONFIG", "UPPER_LEFT", 0);
     }
 
     char path[PATH_MAX];
@@ -264,6 +280,10 @@ __attribute__((constructor)) static void vpLogProcess(void) {
         vpLoadLibrary("accelerometer-hook", VP_ACCELEROMETER_HOOK);
         vpLoadLibrary("hinge-hook", VP_HINGE_HOOK);
         vpLoadLibrary("fold-display", VP_FOLD_DISPLAY);
+        return;
+    }
+    if (vpIsLocationd(path)) {
+        vpLoadLibrary("hinge-hook", VP_HINGE_HOOK);
         return;
     }
     // SpringBoard needs the haptics swizzle before UIKit first asks for an
@@ -313,5 +333,6 @@ __attribute__((used, section("__DATA,__interpose"))) static const struct {
     {(const void *)vpSpawnP, (const void *)posix_spawnp},
     {(const void *)vpSpawn, (const void *)posix_spawn},
     {(const void *)vpSetSpawnExceptionPortsPreservingX1, (const void *)posix_spawnattr_setexceptionports_np},
+    {(const void *)vpSetTaskExceptionPortsPreservingX1, (const void *)task_set_exception_ports},
     {(const void *)vpExecve, (const void *)execve},
 };

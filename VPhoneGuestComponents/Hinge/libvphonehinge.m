@@ -1,9 +1,13 @@
+#import "VPhoneHingeClientDispatch.h"
 #import "VPhoneHingeHID.h"
+#import "VPhoneHingeRelayResend.h"
 #import "VPhoneHingeState.h"
+#include "../MISFix/MISFixDetour.h"
 #include <dlfcn.h>
 #include <mach/mach_time.h>
 #include <notify.h>
 #include <objc/message.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 
 // MARK: - HID provider in backboardd
@@ -31,12 +35,71 @@
 @property (nonatomic) uint64_t dispatched;
 @property (nonatomic) uint64_t failures;
 @property (nonatomic) uint64_t sweeps;
+@property (nonatomic) uint64_t clientControls;
+@property (nonatomic, copy) NSString *clientDispatch;
 @property (nonatomic) int notificationToken;
 @property (nonatomic, copy) NSString *lastError;
 - (void)start;
 - (void)dispatchSample;
 - (void)dispatchAngle:(double)angle velocity:(double)velocity state:(int32_t)state phase:(int32_t)phase;
+- (void)takeClientEvent:(id)event;
 @end
+
+// MARK: - Client-dispatched hinge values
+//
+// backboardd's HID server hands a client's `io_hideventsystem_dispatch_event`
+// to `_io_hideventsystem_dispatch_event`, which IOKit exports. The hinge
+// detours it. A hinge-slider event is the hinge's: it frees the buffer as the
+// server would and answers success, so the server neither refuses an
+// unentitled client nor logs it. Every other event goes to the server
+// unchanged. The table that names the routine is in the cache's
+// __AUTH_CONST, whose pages refuse a copy-on-write (KERN_PROTECTION_FAILURE);
+// the function's page takes one. The event is dispatched on the hinge's
+// queue, since dispatching on its service from the server's receive path
+// would wait on that path.
+
+static VPhoneHingeProvider *VPhoneHingeClientProvider;
+static VPhoneHingeDispatchEventServer VPhoneHingeDispatchEventOriginal;
+static VPhoneHingeEventReader VPhoneHingeReader;
+
+static kern_return_t VPhoneHingeDispatchEvent(mach_port_t server, vm_offset_t data, mach_msg_type_number_t length) {
+    VPhoneHingeProvider *provider = VPhoneHingeClientProvider;
+    if (provider && data && length && length <= VP_HINGE_CLIENT_EVENT_MAX_DATA) {
+        @autoreleasepool {
+            NSData *eventData = [NSData dataWithBytes:(const void *)data length:length];
+            id event = VPhoneHingeClientSliderEvent(eventData, &VPhoneHingeReader);
+            if (event) {
+                vm_deallocate(mach_task_self(), data, length);
+                dispatch_async(provider.queue, ^{ [provider takeClientEvent:event]; });
+                return KERN_SUCCESS;
+            }
+        }
+    }
+    return VPhoneHingeDispatchEventOriginal(server, data, length);
+}
+
+/// Installed from the constructor, before backboardd serves its clients: the
+/// detour rewrites the function's first four instructions, which a thread must
+/// not be running at the time.
+static NSString *VPhoneHingeAcceptClientDispatches(void) {
+    void *iokit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_NOW | RTLD_LOCAL);
+    VPhoneHingeReader = (VPhoneHingeEventReader){
+        dlsym(iokit, "IOCFUnserializeBinary"), dlsym(iokit, "IOHIDEventCreateWithDataInternal"),
+        dlsym(iokit, "IOHIDEventGetType"), dlsym(iokit, "IOHIDEventGetIntegerValue"),
+        dlsym(iokit, "IOHIDEventGetDataValue"),
+    };
+    void *server = dlsym(iokit, "_io_hideventsystem_dispatch_event");
+    if (!VPhoneHingeReader.unserializeBinary || !VPhoneHingeReader.createEventWithData ||
+        !VPhoneHingeReader.eventType || !VPhoneHingeReader.eventInteger || !VPhoneHingeReader.eventData || !server)
+        return @"HID server dispatch function unavailable";
+    void *original = NULL;
+    MISFixDetourResult result = MISFixDetour("HID server client dispatch", server, (void *)VPhoneHingeDispatchEvent,
+                                             &original);
+    if (result != MISFixDetourOK)
+        return [NSString stringWithFormat:@"HID server dispatch not detoured: %s", MISFixDetourDescribe(result)];
+    VPhoneHingeDispatchEventOriginal = (VPhoneHingeDispatchEventServer)original;
+    return @"installed";
+}
 
 @implementation VPhoneHingeProvider
 
@@ -47,6 +110,7 @@
         @"report_interval_us": @(self.interval), @"dispatched": @(self.dispatched),
         @"dispatch_failures": @(self.failures), @"sweeps": @(self.sweeps),
         @"sweeping": @(self.sweepTimer != nil), @"current_angle": @(self.currentAngle),
+        @"client_dispatch": self.clientDispatch ?: @"", @"client_controls": @(self.clientControls),
         @"error": self.lastError ?: @"",
         @"configuration": VPhoneHingeEncode(self.state),
     };
@@ -90,7 +154,9 @@
 - (void)updateTimer {
     // locationd's relay keeps the last value it was sent and never asks for
     // one; when locationd restarts it reseeds 0° and portrait. Stationary
-    // values are therefore sent again every few seconds.
+    // values are therefore sent again every few seconds, which also hands the
+    // angle to a CoreMotion client started since (on 27.2 with the relay's
+    // resend; see VPhoneHingeRelayResend.h).
     uint64_t period = self.enumerated ? VP_HINGE_REPUSH_SECONDS * NSEC_PER_SEC : DISPATCH_TIME_FOREVER;
     dispatch_source_set_timer(self.timer, period == DISPATCH_TIME_FOREVER ? DISPATCH_TIME_FOREVER : DISPATCH_TIME_NOW,
                               period, NSEC_PER_MSEC);
@@ -257,6 +323,21 @@ static double VPhoneHingeProgress(double t, int32_t profile) {
         [self dispatchControl:@{@"source": @"orientation-picker-control", @"type": @"enum", @"value": name}];
 }
 
+- (void)takeClientEvent:(id)event {
+    // The client's own event, unchanged: vphoned follows a dictionary that
+    // names the VM provider, as it follows DeviceHub's, and the relay reads it
+    // from this service.
+    self.clientControls++;
+    if (self.enumerated && [self.service dispatchEvent:event]) {
+        self.dispatched++;
+        self.lastError = nil;
+    } else {
+        self.failures++;
+        self.lastError = @"Client hinge value dispatch failed";
+    }
+    [self publishStatus];
+}
+
 - (void)createService {
     self.enumerated = NO;
     self.cancelling = NO;
@@ -391,6 +472,19 @@ static double VPhoneHingeProgress(double t, int32_t profile) {
 @end
 
 __attribute__((constructor)) static void VPhoneHingeStart(void) {
+    // Only a foldable has a hinge to set; vphoned follows DeviceHub's controls
+    // on the same product.
+    char product[64] = {0};
+    size_t size = sizeof(product);
+    BOOL foldable = sysctlbyname("hw.machine", product, &size, NULL, 0) == 0 && strcmp(product, "iPhone19,4") == 0;
+    if (strcmp(getprogname(), "locationd") == 0) {
+        if (foldable) {
+            BOOL installed = VPhoneHingeInstallRelayResend(NSClassFromString(@"CMDeviceStateRelayManager"),
+                                                           NSClassFromString(@"CMAngleInterpolator"));
+            NSLog(@"[vphone-hinge] relay resends an unchanged angle: %@", installed ? @"yes" : @"no, not 27.2's relay");
+        }
+        return;
+    }
     // Only backboardd creates the HID service. Starting asynchronously avoids
     // calling the HID server while its daemon is still running image
     // constructors.
@@ -399,5 +493,10 @@ __attribute__((constructor)) static void VPhoneHingeStart(void) {
     static VPhoneHingeProvider *provider;
     provider = [VPhoneHingeProvider new];
     provider.queue = dispatch_queue_create("com.vphone.motion.hinge", DISPATCH_QUEUE_SERIAL);
+    if (foldable) {
+        VPhoneHingeClientProvider = provider;
+        provider.clientDispatch = VPhoneHingeAcceptClientDispatches();
+        NSLog(@"[vphone-hinge] client hinge values: %@", provider.clientDispatch);
+    }
     dispatch_async(provider.queue, ^{ [provider start]; });
 }

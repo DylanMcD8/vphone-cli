@@ -47,6 +47,25 @@ public enum ARM64Condition: UInt32, Sendable, CaseIterable {
 }
 
 public enum ARM64Encoder {
+    /// FCVTZS Xd, Dn: signed double-to-64-bit conversion toward zero.
+    /// sf=1, floating type=01, rmode=11; Rn occupies [9:5], Rd [4:0].
+    public static func encodeFcvtzsXFromD(rd: Int, rn: Int) -> Data? {
+        guard (0 ... 31).contains(rd), (0 ... 31).contains(rn) else { return nil }
+        return ARM64.encodeU32(0x9E78_0000 | UInt32(rn) << 5 | UInt32(rd))
+    }
+
+    // MARK: - Scalar floating-point viewport conversion
+
+    public static func encodeFcvtDFromS(rd: UInt32, rn: UInt32) -> Data? {
+        guard rd < 32, rn < 32 else { return nil }
+        return ARM64.encodeU32(0x1E22_C000 | (rn << 5) | rd)
+    }
+
+    public static func encodeFaddSubD(subtract: Bool, rd: UInt32, rn: UInt32, rm: UInt32) -> Data? {
+        guard rd < 32, rn < 32, rm < 32 else { return nil }
+        return ARM64.encodeU32((subtract ? 0x1E60_3800 : 0x1E60_2800) | (rm << 16) | (rn << 5) | rd)
+    }
+
     // MARK: - Register arithmetic
 
     /// MADD/MSUB X-register form; register 31 is XZR.
@@ -69,6 +88,13 @@ public enum ARM64Encoder {
 
     // MARK: - Comparisons
 
+    /// CMP Xn, Xm (SUBS XZR, Xn, Xm); register 31 is XZR.
+    public static func encodeCmpX(rn: UInt32, rm: UInt32) -> Data? {
+        guard rn < 32, rm < 32 else { return nil }
+        let insn: UInt32 = 0xEB00_001F | (rm << 16) | (rn << 5)
+        return ARM64.encodeU32(insn)
+    }
+
     /// CMP Wn,#imm12; register 31 is WSP.
     public static func encodeCmpWImmediate(rn: UInt32, imm12: UInt32) -> Data? {
         guard rn < 32, imm12 < 4096 else { return nil }
@@ -82,6 +108,20 @@ public enum ARM64Encoder {
     }
 
     // MARK: - Branch Encoding
+
+    /// BR Xn; XZR is not a branch target.
+    public static func encodeBR(rn: UInt32) -> Data? {
+        guard rn < 31 else { return nil }
+        return ARM64.encodeU32(0xD61F_0000 | (rn << 5))
+    }
+
+    /// LDR Xt, label: signed, word-aligned PC-relative literal within ±1 MiB.
+    public static func encodeLdrXLiteral(rt: UInt32, from pc: Int, to target: Int) -> Data? {
+        guard rt < 32 else { return nil }
+        let delta = target - pc
+        guard delta & 3 == 0, delta >= -(1 << 20), delta < (1 << 20) else { return nil }
+        return ARM64.encodeU32(0x5800_0000 | ((UInt32(truncatingIfNeeded: delta >> 2) & 0x7FFFF) << 5) | rt)
+    }
 
     /// Encode unconditional B (branch) instruction.
     ///
@@ -225,6 +265,13 @@ public enum ARM64Encoder {
         return ARM64.encodeU32(insn)
     }
 
+    /// MOVK Wd, #imm16, LSL #shift; replace one 16-bit lane.
+    public static func encodeMovkW(rd: UInt32, imm16: UInt16, shift: UInt32 = 0) -> Data? {
+        guard rd < 32, shift == 0 || shift == 16 else { return nil }
+        let insn: UInt32 = 0x7280_0000 | ((shift / 16) << 21) | (UInt32(imm16) << 5) | rd
+        return ARM64.encodeU32(insn)
+    }
+
     /// Encode MOVZ Xd, #imm16 (64-bit).
     public static func encodeMovzX(rd: UInt32, imm16: UInt16, shift: UInt32 = 0) -> Data? {
         let hw = shift / 16
@@ -301,6 +348,20 @@ public enum ARM64Encoder {
         insn |= imm12 << 10
         insn |= rn << 5
         insn |= rt
+        return ARM64.encodeU32(insn)
+    }
+
+    /// LDRB Wt, [Xn|SP, #offset], with an unsigned byte offset.
+    public static func encodeLdrBUnsignedOffset(rt: UInt32, rn: UInt32, offset: UInt32) -> Data? {
+        guard rt < 32, rn < 32, offset < 4096 else { return nil }
+        let insn: UInt32 = 0x3940_0000 | (offset << 10) | (rn << 5) | rt
+        return ARM64.encodeU32(insn)
+    }
+
+    /// STRB Wt, [Xn|SP, #offset], with an unsigned byte offset.
+    public static func encodeStrBUnsignedOffset(rt: UInt32, rn: UInt32, offset: UInt32) -> Data? {
+        guard rt < 32, rn < 32, offset < 4096 else { return nil }
+        let insn: UInt32 = 0x3900_0000 | (offset << 10) | (rn << 5) | rt
         return ARM64.encodeU32(insn)
     }
 

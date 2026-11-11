@@ -4,14 +4,57 @@
 // IOHIDEventCreateVendorDefinedEvent as the guest's does, so a host-control
 // dictionary is checked to fit locationd's 256-byte limit, to read back the
 // way locationd parses it, and to land in a vendor-defined event on the
-// host-control usage. Where a function is absent the event checks are
-// skipped; the transport checks always run.
+// host-control usage. A client's dispatched event is read back the way
+// backboardd's hinge takes it: DeviceHub's slider only. Where a function is
+// absent the event checks are skipped; the transport checks always run.
+#import "../Hinge/VPhoneHingeClientDispatch.h"
 #import "../Hinge/VPhoneHingeHID.h"
+#import "../Hinge/VPhoneHingeRelayResend.h"
 #import "../Hinge/VPhoneHingeState.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <mach/mach_time.h>
 #include <stdio.h>
+
+// Stand-ins for iOS 27.2's relay and its interpolator, recording what reaches
+// each, and for 27.1's relay, which has neither an angle nor an interpolator.
+@interface VPhoneTestInterpolator : NSObject
+@property (nonatomic, strong) NSMutableArray<NSArray<NSNumber *> *> *calls;
+@end
+@implementation VPhoneTestInterpolator
+- (instancetype)init {
+    self = [super init];
+    _calls = [NSMutableArray array];
+    return self;
+}
+- (void)interpolateToAngle:(float)angle duration:(double)duration {
+    [self.calls addObject:@[@(angle), @(duration)]];
+}
+@end
+
+@interface VPhoneTestRelay : NSObject
+@property (nonatomic, strong) NSNumber *effectiveAngle;
+@property (nonatomic, strong) VPhoneTestInterpolator *interpolator;
+@property (nonatomic, strong) NSMutableArray<NSNumber *> *fed;
+@end
+@implementation VPhoneTestRelay
+- (instancetype)init {
+    self = [super init];
+    _interpolator = [VPhoneTestInterpolator new];
+    _fed = [NSMutableArray array];
+    return self;
+}
+- (void)_feedAngleUpdate:(NSNumber *)angle {
+    [self.fed addObject:angle];
+}
+@end
+
+@interface VPhoneTestOlderRelay : NSObject
+@end
+@implementation VPhoneTestOlderRelay
+- (void)_feedAngleUpdate:(NSNumber *)angle {
+}
+@end
 
 int main(void) {
     @autoreleasepool {
@@ -107,6 +150,21 @@ int main(void) {
         assert(VPhoneHingeInterval(@(16000)) == 16000);
         assert(VPhoneHingeInterval(@(2e9)) == 1000000);
 
+        // 27.1's relay has no interpolator and is left as it is.
+        assert(!VPhoneHingeInstallRelayResend(Nil, VPhoneTestInterpolator.class));
+        assert(!VPhoneHingeInstallRelayResend(VPhoneTestOlderRelay.class, VPhoneTestInterpolator.class));
+        assert(VPhoneHingeInstallRelayResend(VPhoneTestRelay.class, VPhoneTestInterpolator.class));
+        assert(!VPhoneHingeInstallRelayResend(VPhoneTestRelay.class, VPhoneTestInterpolator.class));
+        VPhoneTestRelay *relay = [VPhoneTestRelay new];
+        // Before the relay has an angle, and for a different one, its own path.
+        [relay _feedAngleUpdate:@180];
+        relay.effectiveAngle = @(180.0f);
+        [relay _feedAngleUpdate:@100];
+        assert([relay.fed isEqual:(@[@180, @100])] && relay.interpolator.calls.count == 0);
+        // The angle it holds: one step to it, with no duration.
+        [relay _feedAngleUpdate:@180];
+        assert(relay.fed.count == 2 && [relay.interpolator.calls isEqual:(@[@[@180.0f, @0.0]])]);
+
         void *iokit = dlopen("/System/Library/Frameworks/IOKit.framework/IOKit", RTLD_NOW | RTLD_LOCAL);
         VPhoneHingeSerializer serialize = (VPhoneHingeSerializer)dlsym(iokit, "IOCFSerialize");
         CFTypeRef (*unserialize)(const char *, size_t, CFAllocatorRef, uint32_t, CFStringRef *) =
@@ -138,6 +196,51 @@ int main(void) {
             NSString *flat = [[fields filteredArrayUsingPredicate:
                                [NSPredicate predicateWithFormat:@"length > 0"]] componentsJoinedByString:@" "];
             assert([flat localizedCaseInsensitiveContainsString:@"VendorDefined"]);
+        }
+
+        // A client's dispatch, as IOHIDEventSystemClientDispatchEvent sends
+        // it: the event's data in a binary property list, the buffer the HID
+        // server function receives.
+        CFDataRef (*eventData)(CFAllocatorRef, CFTypeRef) = dlsym(iokit, "IOHIDEventCreateDataInternal");
+        VPhoneHingeEventReader reader = {
+            dlsym(iokit, "IOCFUnserializeBinary"), dlsym(iokit, "IOHIDEventCreateWithDataInternal"),
+            dlsym(iokit, "IOHIDEventGetType"), dlsym(iokit, "IOHIDEventGetIntegerValue"),
+            dlsym(iokit, "IOHIDEventGetDataValue"),
+        };
+        if (!eventData || !reader.unserializeBinary || !reader.createEventWithData || !reader.eventType ||
+            !reader.eventInteger || !reader.eventData) {
+            printf("IOKit event data functions unavailable here; client dispatch checks skipped\n");
+            printf("hinge tests passed\n");
+            return 0;
+        }
+        NSData * (^dispatched)(NSDictionary *, uint32_t) = ^NSData *(NSDictionary *control, uint32_t page) {
+            NSData *payload = CFBridgingRelease(serialize((__bridge CFTypeRef)control, 1));
+            id event = CFBridgingRelease(factory(NULL, mach_absolute_time(), page, VP_HOST_CONTROLS_USAGE, 0,
+                                                 payload.bytes, (long)payload.length, 0));
+            NSData *data = CFBridgingRelease(eventData(NULL, (__bridge CFTypeRef)event));
+            NSData *wire = [NSPropertyListSerialization dataWithPropertyList:data
+                                     format:NSPropertyListBinaryFormat_v1_0 options:0 error:nil];
+            assert(wire.length <= VP_HINGE_CLIENT_EVENT_MAX_DATA);
+            return wire;
+        };
+        // WebDriverAgent's payload: DeviceHub's slider, value a double.
+        NSDictionary *slider = @{
+            @"provider": @"com.apple.Virtualization.VirtualMachines", @"source": @"hinge-slider-control",
+            @"type": @"range", @"value": @120.0,
+        };
+        assert(VPhoneHingeClientSliderEvent(dispatched(slider, VP_HOST_CONTROLS_USAGE_PAGE), &reader));
+        assert(!VPhoneHingeClientSliderEvent(dispatched(slider, 0xff00), &reader));
+        NSArray *refused = @[
+            @{@"source": @"hinge-slider-control", @"type": @"range", @"value": @120},
+            @{@"provider": @"com.apple.Virtualization.VirtualMachines", @"source": @"orientation-picker-control",
+              @"type": @"enum", @"value": @"portrait"},
+        ];
+        for (NSDictionary *control in refused)
+            assert(!VPhoneHingeClientSliderEvent(dispatched(control, VP_HOST_CONTROLS_USAGE_PAGE), &reader));
+        for (id value in @[@-1, @181, @YES, @"120"]) {
+            NSMutableDictionary *bad = [slider mutableCopy];
+            bad[@"value"] = value;
+            assert(!VPhoneHingeClientSliderEvent(dispatched(bad, VP_HOST_CONTROLS_USAGE_PAGE), &reader));
         }
         printf("hinge tests passed\n");
         return 0;

@@ -1,26 +1,37 @@
-# Sibling guest components
+# Guest components
 
 `make -C VPhoneGuestComponents package` cross-compiles guest components with
-Xcode's iPhoneOS SDK (the HomePod adapter uses the tvOS SDK). The archive contains signed arm64e binaries, two camera
-tweak filter plists, and the GPU provenance note:
+Xcode's iPhoneOS SDK (the HomePod adapter uses the tvOS SDK). The archive contains signed arm64e binaries, the camera
+hook and MISFix filter plists, and the GPU provenance note:
 
 | Component | Archive contents |
 | --- | --- |
 | Camera app hook | `camfix/libcamfix.dylib`, `camfix/libcamfix.plist` |
 | Camera daemon hook | `vcamcaptured/libvcamcaptured.dylib`, `vcamcaptured/libvcamcaptured.plist` |
+| Install-gate filter (MISFix) | `misfix/libmisfix.dylib`, `misfix/libmisfix.plist` |
 | Haptics fix | `hapticsfix/libhapticsfix.dylib` |
 | Battery health fix | `batteryhealthfix/libbatteryhealthfix.dylib` |
 | DeviceHub fix | `devicehubfix/libdevicehubfix.dylib` |
 | Device name pin | `devicename/libdevicename.dylib` |
+| Settings suggestions filter | `prefsfix/libprefsfix.dylib` |
+| Sign-in sheet filter | `signinfix/libsigninfix.dylib` |
+| iOS 16 desktop bring-up | `ios16desktop/libvphoneios16desktop.dylib`, `ios16migration/libvphoneios16migration.dylib` |
+| iOS 17 desktop bring-up | `ios17desktop/libvphoneios17desktop.dylib` |
 | Virtual gyroscope | `gyroscope/libvphonegyro.dylib` |
 | Gravity accelerometer | `accelerometer/libvphoneaccelerometer.dylib` |
 | Virtual hinge angle | `hinge/libvphonehinge.dylib` |
+| Foldable SpringBoard guard | `foldguard/libvphonefoldguard.dylib` |
+| Foldable inner display | `folddisplay/libvphonefolddisplay.dylib` |
 | Device attitude | `attitude/libvphoneattitude.dylib` |
 | HomePod display identity | `homepoddisplay/libvphonehomepoddisplay.dylib` |
+| HomePod cryptex staging | `cryptexstaging/libvphonecryptexstaging.dylib` |
+| HomePod install persona | `homepodpersona/libvphoneinstallpersona.dylib` |
+| HomePod install-gate filter | `homepodmisfix/libvphonehomepodmisfix.dylib` |
 | HomePod setup maintenance | `homepodsetup/vphone-homepod-setup`, `homepodsetup/com.vphone.homepod-setup.plist` |
+| Apple TV setup focus | `tvsetupfocus/libvphonetvsetupfocus.dylib` |
 | Launchd hook | `launchhook/launchdhook-vphone.dylib` |
 | Process injection bridge | `systemhook/SystemHook-vphone.dylib` |
-| iOS 27 app registrar | `vpregister/vpregister` |
+| GPU compiler plugin | `gpu/libAppleParavirtCompilerPluginIOGPUFamily.dylib` |
 | PCC GPU driver | `gpu/README.md` (source and extraction flow; no Apple binary) |
 | Virtio sound HAL plugin | `virtiosound/VPhoneVirtIOSound.driver` |
 
@@ -59,7 +70,7 @@ attributes afterwards (`Shared/JetsamLimits.h`).
 Irisin installs ElleKit's own `TweakLoader.dylib` in the selected bootstrap.
 The required GPU bundle is extracted from the selected PCC firmware by
 `vphone-cli fw prepare` and copied into the VM during JB installation. No
-Apple GPU binary is stored in this directory, the archive, or the shipped app.
+Apple GPU binary is stored in this directory, the archive, or the shipped bundle.
 
 See `Research/Guest/virtual_camera_transport.md` for the camera transport
 validation and the hook installation prerequisites.
@@ -86,7 +97,7 @@ sensor. See `Research/Guest/springboard_orientation_stuck.md` for evidence and
 the language-change regression boundary.
 
 `system-backboardd-cfw-hinge` installs `libvphonehinge.dylib`, also selected
-independently and loaded only in backboardd. It publishes Apple's VM host
+independently and loaded in backboardd and locationd. It publishes Apple's VM host
 controls (primary usage page 0xFF61, usage 0x5B) and sends the angle and
 device orientation configured by `display.posture` and `display.rotation` as
 vendor-defined events carrying `IOCFSerialize`d `hinge-slider-control` and
@@ -96,9 +107,19 @@ turns them into the hinge-angle and device-state services CoreMotion reads
 0xFF0C/0x22), and SpringBoard and CoreDevice's hingeAngle stream read
 CoreMotion. The relay only runs when the device tree carries the foldable
 board's own product-id (`preboot-cfw-devicetree_foldable_product_id`), so on
-any other guest the service sits unread. Foldable guests only; `make
-test-hinge` checks the configuration transport and, on a Mac, the
-dictionaries' serialization round trip, size and vendor-defined event.
+any other guest the service sits unread. On an iPhone Duo it also detours
+backboardd's HID server (`_io_hideventsystem_dispatch_event`) to take the
+DeviceHub hinge-slider event a client without the event-dispatch
+entitlement sends (WebDriverAgent's `POST /wda/device/hingeAngle`) and
+dispatches it on that service. The hinge resends a resting angle every few
+seconds, which is how a CoreMotion client started since gets one: CoreMotion
+on a VM has no hinge device to read an angle from. iOS 27.2's relay skips an
+angle equal to the one it holds, so in locationd the hinge has the relay pass
+that angle on in one step (`Hinge/VPhoneHingeRelayResend.h`). Foldable guests
+only; `make test-hinge` checks the configuration transport, the relay resend
+against stand-in classes and, on a Mac, the dictionaries' serialization round
+trip, size and vendor-defined event, and which client-dispatched events the
+hinge takes.
 
 `system-apps-cfw-attitude` installs `libvphoneattitude.dylib`, loaded by
 SystemHook into apps. It supplies a stationary Core Motion pose through
@@ -116,6 +137,15 @@ which iOS ships no driver for. audiomxd loads it when the kernel publishes
 `make test-virtiosound` checks its format choice, its rings and how captured
 frames are served, on the host. See `Research/Guest/virtio_sound.md` and
 `Research/Guest/virtio_sound_microphone.md`.
+
+`system-systemhook-cfw-ios18_gpu_transport` links the iOS 18 GPU transport into
+SystemHook. While `/usr/lib/vphone-ios18-gpu` exists it detours IOKit's service
+open and close and its two call entry points with MISFixDetour, and translates the
+calls of IOGPU device clients only: method 6 is answered locally, 7 to 255 move
+down by one, and the resource-create and paravirtual device-info replies are
+repacked to iOS 18's layout. `cfw install` writes the marker only for iOS 18.6
+on cloudOS 26.1, over the iOS release's own driver. `make test-ios18-gpu` checks
+the rules. See `Research/Guest/ios18_gpu_transport.md`.
 
 `FlutterRemapFix` is linked into SystemHook for early handling of a specific
 Flutter AOT callback remap permission mismatch. It checks canonical same-bundle

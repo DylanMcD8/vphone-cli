@@ -47,7 +47,8 @@ struct VPhoneCustomFirmwarePatchArm64eX1Command: ParsableCommand {
         commandName: "patch-arm64e-x1",
         abstract: "Lower X1 instructions in a supported standalone executable",
         discussion: """
-        Supports dyld, launchd, fsck, mount and CIBarcode. Other standalone userland \
+        Supports dyld, launchd, fsck, mount, CIBarcode and SpringBoardHomePopAccessibility. \
+        Other standalone userland \
         instructions are handled on demand. Re-attests modified code pages.
         """,
     )
@@ -60,9 +61,14 @@ struct VPhoneCustomFirmwarePatchArm64eX1Command: ParsableCommand {
         case "launchd": identifier = FirmwareGuestSystemPatchSet.arm64eX1LaunchdBootstrap
         case "fsck": identifier = FirmwareGuestSystemPatchSet.arm64eX1FsckBootstrap
         case "mount": identifier = FirmwareGuestSystemPatchSet.arm64eX1MountBootstrap
+        case "SpringBoardHomePopAccessibility":
+            identifier = FirmwareGuestSystemPatchSet.arm64eX1HomePopAccessibility
         case "CIBarcode": identifier = FirmwareGuestSystemPatchSet.arm64eX1CIBarcode
         default:
-            throw ValidationError("X1 static lowering supports only dyld, launchd, fsck, mount and CIBarcode")
+            throw ValidationError(
+                "X1 static lowering supports only dyld, launchd, fsck, mount, CIBarcode "
+                    + "and SpringBoardHomePopAccessibility",
+            )
         }
         try CustomFirmwareArm64eX1.patch(
             fileAt: binary,
@@ -137,8 +143,8 @@ struct VPhoneCustomFirmwarePatchSeputilCommand: ParsableCommand {
         to "AA" makes the path /mnt7/AA.gl on every guest, which is what lets
         the install ship one pre-made .gl file instead of one per device.
 
-        The literal is found in __TEXT,__cstring and confirmed by an adrp+add
-        pair in __TEXT,__text that computes its address — the Python takes the
+        The literal is found in __TEXT,__cstring and confirmed by an adr or adrp+add
+        reference in __TEXT,__text that computes its address — the Python takes the
         first substring hit anywhere in the file. Both land on the same byte in
         this firmware; this one cannot land on a coincidence in the next.
 
@@ -261,6 +267,27 @@ struct VPhoneCustomFirmwarePatchLaunchdJetsamCommand: ParsableCommand {
         // Off in the library and off in the Python: cfw_install_{dev,jb,exp}.sh
         // and cfw-kit/jb/install.sh all run ldid over the result.
         try CustomFirmwareJetsamPatcher.patch(fileAt: binary, reattest: false, log: machOVerbLog)
+    }
+}
+
+// MARK: - patch-visionos-frame-pacing
+
+struct VPhoneCustomFirmwarePatchVisionOSFramePacingCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "patch-visionos-frame-pacing",
+        abstract: "Correct V201 late-vsync rounding while preserving its native display clock",
+        shouldDisplay: false,
+    )
+
+    @Argument(help: "Path to the reviewed visionOS wakeboardd Mach-O", transform: URL.init(fileURLWithPath:))
+    var binary: URL
+
+    @Flag(name: .customLong("dry-run"), help: "Validate without writing")
+    var dryRun = false
+
+    func run() throws {
+        try requireUntruncatedMachO(at: binary)
+        try CustomFirmwareVisionOSFramePacing.patch(at: binary, dryRun: dryRun, log: machOVerbLog)
     }
 }
 
@@ -640,6 +667,68 @@ struct VPhoneCustomFirmwarePatchParavirtGPUIndexOffsetCommand: ParsableCommand {
     }
 }
 
+// MARK: - patch-paravirt-gpu-primitive-restart
+
+struct VPhoneCustomFirmwarePatchParavirtGPUPrimitiveRestartCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "patch-paravirt-gpu-primitive-restart",
+        abstract: "Stop the paravirtual GPU driver sending the primitive restart override",
+        discussion: """
+        OpenGL ES calls setPrimitiveRestartEnabled:index: with the restart
+        index itself, 0xffffffff. The cloudOS 26.4 driver sends it as command
+        0x91, and the host checks the index against maxViewportCount, throws,
+        and fails the command buffer. The serialiser method's pacibsp becomes
+        ret, so the command is never sent and Metal's own restart behaviour
+        applies.
+
+        The method is found from the command's mov w2/mov w3 setup, which is
+        unique in __text. Idempotent: a method that already returns at entry is
+        reported and the file is not rewritten.
+        """,
+    )
+
+    @Argument(help: "Path to the AppleParavirtGPUMetalIOGPUFamily Mach-O, patched in place", transform: URL.init(fileURLWithPath:))
+    var binary: URL
+
+    func run() throws {
+        try requireUntruncatedMachO(at: binary)
+        // No re-attestation: the caller re-signs.
+        try CustomFirmwareParavirtGPUPrimitiveRestart.patch(fileAt: binary, log: machOVerbLog)
+    }
+}
+
+// MARK: - patch-paravirt-gpu-compiler-cache
+
+struct VPhoneCustomFirmwarePatchParavirtGPUCompilerCacheCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "patch-paravirt-gpu-compiler-cache",
+        abstract: "Version the paravirtual GPU shader cache with its compiler plugin",
+        discussion: """
+        The cloudOS 26.4 driver hashes a fixed compiler identity into its shader-cache
+        namespace. Replace its two eight-byte identity inputs with a SHA-256-derived
+        identity of the compiler plugin that will be loaded in the guest. A plugin
+        update then recompiles shaders without deleting existing caches.
+
+        The setupCompiler SHA256_Update call flow locates both inputs. Instructions
+        are unchanged. Reapplying the same plugin identity leaves the file unchanged.
+        The caller must re-sign the driver after patching.
+        """,
+    )
+
+    @Argument(help: "Path to the AppleParavirtGPUMetalIOGPUFamily Mach-O, patched in place", transform: URL.init(fileURLWithPath:))
+    var binary: URL
+
+    @Option(name: .customLong("compiler-plugin"), help: "Path to the compiler plugin installed alongside the driver", transform: URL.init(fileURLWithPath:))
+    var compilerPlugin: URL
+
+    func run() throws {
+        try requireUntruncatedMachO(at: binary)
+        try CustomFirmwareParavirtGPUCompilerCache.patch(
+            fileAt: binary, compilerPluginAt: compilerPlugin, log: machOVerbLog,
+        )
+    }
+}
+
 enum VPhoneCustomFirmwareMachOVerbs {
     /// Registered into `vphone-cli cfw` by `VPhoneCustomFirmwareCommand`.
     ///
@@ -654,13 +743,35 @@ enum VPhoneCustomFirmwareMachOVerbs {
             VPhoneCustomFirmwarePatchLaunchdJetsamCommand.self,
             VPhoneCustomFirmwarePatchArm64eX1Command.self,
             VPhoneCustomFirmwarePatchWatchdogdCommand.self,
+            VPhoneCustomFirmwarePatchVisionOSFramePacingCommand.self,
             VPhoneCustomFirmwarePatchDiskimagesiodCommand.self,
+            VPhoneCustomFirmwarePatchRemotePairingCommand.self,
             VPhoneCustomFirmwarePatchVirtualAudioCommand.self,
             VPhoneCustomFirmwarePatchVirtualAudioMuteCommand.self,
             VPhoneCustomFirmwarePatchVirtualAudioSPGateCommand.self,
             VPhoneCustomFirmwarePatchVirtualAudioVolumeGateCommand.self,
             VPhoneCustomFirmwarePatchVirtualAudioDeviceStateNullGateCommand.self,
             VPhoneCustomFirmwarePatchParavirtGPUIndexOffsetCommand.self,
+            VPhoneCustomFirmwarePatchParavirtGPUPrimitiveRestartCommand.self,
+            VPhoneCustomFirmwarePatchParavirtGPUCompilerCacheCommand.self,
         ]
+    }
+}
+
+struct VPhoneCustomFirmwarePatchRemotePairingCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "patch-remotepairingdeviced",
+        abstract: "Allow local pairing control and tunnel connections",
+    )
+
+    @Argument(help: "Path to the remotepairingdeviced Mach-O, patched in place", transform: URL.init(fileURLWithPath:))
+    var binary: URL
+
+    @Flag(name: .customLong("dry-run"), help: "Report the sites without changing the file")
+    var dryRun = false
+
+    func run() throws {
+        try requireUntruncatedMachO(at: binary)
+        try CustomFirmwareRemotePairing.patch(fileAt: binary, dryRun: dryRun)
     }
 }

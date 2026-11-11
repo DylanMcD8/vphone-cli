@@ -12,6 +12,184 @@ import VPhonePatchKit
 
 @Suite("Guest patch resolution")
 struct FirmwareGuestPatchResolutionTests {
+    @Test func `unsupported renderer prerequisites skip dependent draws and preserve installed group`() {
+        let format = FirmwareGuestSystemPatchSet.metalVertexIDFormat
+        let restart = FirmwareGuestSystemPatchSet.glesPrimitiveRestart
+        let point = FirmwareGuestSystemPatchSet.glesPointDraw
+        let selected: Set<String> = [format, restart, point]
+        let fresh = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: selected, previouslyApplied: [], unavailable: [format], gpuInstalled: false)
+        #expect(fresh.skipped == [format, restart])
+        #expect(fresh.preserved.isEmpty)
+        let independent = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: selected, previouslyApplied: [], unavailable: [point], gpuInstalled: true)
+        #expect(independent.skipped == [point])
+        #expect(independent.preserved.isEmpty)
+        for missing in selected {
+            let installed = FirmwareGuestPatchResolution.glesUpdatePolicy(
+                enabled: selected, previouslyApplied: selected, unavailable: [missing], gpuInstalled: true)
+            #expect(installed.preserved.isSuperset(of: selected))
+            #expect(installed.preserved.contains(FirmwareGuestSystemPatchSet.paravirtGPUCompilerCache))
+            #expect(!installed.preserved.contains("system-vphoned-boot-install"))
+        }
+    }
+
+    @Test func `unsupported fresh depth leaves both halves unconfigured`() {
+        let depth = FirmwareGuestSystemPatchSet.glesDepthClip
+        let identity = FirmwareGuestSystemPatchSet.paravirtGPUCompilerCache
+        let selected: Set<String> = [depth, identity, "system-extensions-boot-gpu_bundle"]
+        let result = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: selected, previouslyApplied: [], unavailable: [depth], gpuInstalled: false)
+        #expect(result.skipped == [depth])
+        #expect(result.preserved.isEmpty)
+        let supported = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: selected, previouslyApplied: [], unavailable: [], gpuInstalled: false)
+        #expect(supported.skipped.isEmpty)
+        #expect(supported.preserved.isEmpty)
+    }
+
+    @Test func `disabled depth dependencies skip new defaults and preserve installed pairs`() {
+        let depth = FirmwareGuestSystemPatchSet.glesDepthClip
+        let identity = FirmwareGuestSystemPatchSet.paravirtGPUCompilerCache
+        let bundle = "system-extensions-boot-gpu_bundle"
+        let all: Set<String> = [depth, identity, bundle]
+        for blocked in [identity, bundle] {
+            let selected = all.subtracting([blocked])
+            let fresh = FirmwareGuestPatchResolution.glesUpdatePolicy(
+                enabled: selected, previouslyApplied: [], unavailable: [], gpuInstalled: false)
+            #expect(fresh.skipped.contains(depth))
+            #expect(fresh.preserved.isEmpty)
+            let installed = FirmwareGuestPatchResolution.glesUpdatePolicy(
+                enabled: selected, previouslyApplied: all, unavailable: [], gpuInstalled: true)
+            #expect(installed.preserved.isSuperset(of: all))
+        }
+        let off = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: [bundle, identity], previouslyApplied: all, unavailable: [], gpuInstalled: true)
+        #expect(off.skipped.isEmpty)
+        #expect(off.preserved.isEmpty)
+    }
+
+    @Test func `unsupported installed depth freezes the compiler driver and renderer`() {
+        let depth = FirmwareGuestSystemPatchSet.glesDepthClip
+        let identity = FirmwareGuestSystemPatchSet.paravirtGPUCompilerCache
+        let selected: Set<String> = [depth, identity, "system-extensions-boot-gpu_bundle"]
+        let result = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: selected, previouslyApplied: selected, unavailable: [depth], gpuInstalled: true)
+        #expect(result.preserved.isSuperset(of: selected))
+        #expect(result.preserved.contains(FirmwareGuestSystemPatchSet.glesPrimitiveRestart))
+        #expect(!result.preserved.contains("system-vphoned-boot-install"))
+    }
+
+    @Test func `cache capability failure skips fresh dependent features and freezes existing GPU`() {
+        let depth = FirmwareGuestSystemPatchSet.glesDepthClip
+        let identity = FirmwareGuestSystemPatchSet.paravirtGPUCompilerCache
+        let key = FirmwareGuestSystemPatchSet.metalCacheReuseKey
+        let reuse = FirmwareGuestSystemPatchSet.metalCacheReuse
+        let selected: Set<String> = [depth, identity, key, reuse, "system-extensions-boot-gpu_bundle"]
+        for missing in [identity, key] {
+            let fresh = FirmwareGuestPatchResolution.glesUpdatePolicy(
+                enabled: selected, previouslyApplied: [], unavailable: [missing], gpuInstalled: false)
+            #expect(fresh.skipped.isSuperset(of: [depth, identity, reuse]))
+            #expect(fresh.preserved.isEmpty)
+            let installed = FirmwareGuestPatchResolution.glesUpdatePolicy(
+                enabled: selected, previouslyApplied: selected.subtracting([depth]),
+                unavailable: [missing], gpuInstalled: true)
+            #expect(installed.preserved.isSuperset(of: selected))
+        }
+        let reuseOff = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: selected.subtracting([reuse]), previouslyApplied: [], unavailable: [key], gpuInstalled: false)
+        #expect(reuseOff.skipped == [key])
+        let keyBlocked = FirmwareGuestPatchResolution.glesUpdatePolicy(
+            enabled: selected.subtracting([key]), previouslyApplied: [], unavailable: [], gpuInstalled: false)
+        #expect(keyBlocked.skipped.isSuperset(of: [depth, identity, reuse]))
+    }
+
+    @Test func `only read only discovery misses qualify as unsupported layouts`() {
+        let misses: [any Error] = [
+            PatcherError.patchSiteNotFound("different setter"),
+            DyldSharedCacheError.symbolNotFound(symbol: "viewport", image: nil),
+            DyldSharedCacheError.imageNotFound("renderer"),
+            DyldSharedCacheError.localSymbolsMissing(path: "symbols"),
+        ]
+        for error in misses {
+            #expect(FirmwareGuestPatchResolution.isUnsupportedGLESLayout(error))
+        }
+        let failures: [any Error] = [
+            PatcherError.patchVerificationFailed("orphaned trampoline"),
+            PatcherError.invalidFormat("truncated commands"),
+            DyldSharedCacheError.shortRead(vma: 0, wanted: 4, got: 0),
+            DyldSharedCacheError.undoRecordInvalid(chunk: "cache", reason: "changed bytes"),
+            CocoaError(.fileWriteNoPermission),
+        ]
+        for error in failures {
+            #expect(!FirmwareGuestPatchResolution.isUnsupportedGLESLayout(error))
+        }
+    }
+
+    @Test func `GLES depth transitions require compiler refresh and cache versioning`() {
+        let depth = FirmwareGuestSystemPatchSet.glesDepthClip
+        let cache = FirmwareGuestSystemPatchSet.paravirtGPUCompilerCache
+        let bundle = "system-extensions-boot-gpu_bundle"
+        #expect(FirmwareGuestPatchResolution.missingGLESDepthDependencies(enabled: [], previouslyApplied: []).isEmpty)
+        #expect(FirmwareGuestPatchResolution.missingGLESDepthDependencies(enabled: [depth, cache, bundle], previouslyApplied: []).isEmpty)
+        #expect(FirmwareGuestPatchResolution.missingGLESDepthDependencies(enabled: [cache, bundle], previouslyApplied: [depth]).isEmpty)
+        #expect(FirmwareGuestPatchResolution.missingGLESDepthDependencies(enabled: [depth, bundle], previouslyApplied: []) == [cache])
+        #expect(FirmwareGuestPatchResolution.missingGLESDepthDependencies(enabled: [bundle], previouslyApplied: [depth]) == [cache])
+        #expect(FirmwareGuestPatchResolution.missingGLESDepthDependencies(enabled: [cache], previouslyApplied: [depth]) == [bundle])
+    }
+
+    @Test func `compiler identity needs cache key validation only when reuse is selected`() throws {
+        let identity = FirmwareGuestSystemPatchSet.paravirtGPUCompilerCache
+        let reuse = FirmwareGuestSystemPatchSet.metalCacheReuse
+        let key = FirmwareGuestSystemPatchSet.metalCacheReuseKey
+        let enabled: Set<String> = [identity, reuse, key]
+        #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: enabled).isEmpty)
+        #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: [identity, reuse]) == [key])
+        // Selection succeeds before installation, but a failed key patch must
+        // still stop the plugin/driver update. A prior applied key is sufficient.
+        #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: enabled, applied: []) == [key])
+        #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: enabled, applied: [identity, reuse]) == [key])
+        #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: enabled, applied: [key]).isEmpty)
+        #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: [identity], applied: []).isEmpty)
+        let choices: [Set<String>] = [[], [identity], [reuse], [key], [identity, key], [reuse, key]]
+        for choice in choices {
+            #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: choice).isEmpty)
+        }
+        let standard = try VPhonePatchPlan.resolve(
+            preset: FirmwarePatchSetCatalog.standardPreset,
+            patchSets: FirmwarePatchSetCatalog.bundled,
+            iOSBase: VPhoneVersion("26.6.2"), cloudOS: VPhoneVersion("26.4"),
+        )
+        #expect(standard.enabled.isSuperset(of: enabled))
+        #expect(FirmwareGuestPatchResolution.missingCompilerCacheDependencies(enabled: standard.enabled).isEmpty)
+    }
+
+    @Test func `GLES primitive expansion rejects missing transport prerequisites but permits opt out`() throws {
+        let patch = FirmwareGuestSystemPatchSet.glesPrimitiveRestart
+        let dependencies = FirmwareGuestPatchResolution.glesPrimitiveRestartDependencies
+        #expect(dependencies == [FirmwareGuestSystemPatchSet.paravirtGPUPrimitiveRestart,
+                                 FirmwareGuestSystemPatchSet.metalVertexIDFormat])
+        let plan = try VPhonePatchPlan.resolve(
+            preset: FirmwarePatchSetCatalog.standardPreset,
+            patchSets: FirmwarePatchSetCatalog.bundled,
+            iOSBase: VPhoneVersion("26.6.2"), cloudOS: VPhoneVersion("26.4"),
+        )
+        #expect(plan.isEnabled(patch))
+        #expect(FirmwareGuestPatchResolution.missingGLESPrimitiveRestartDependencies(enabled: plan.enabled).isEmpty)
+        for dependency in dependencies {
+            let blocked = try VPhonePatchPlan.resolve(
+                preset: FirmwarePatchSetCatalog.standardPreset,
+                patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion("26.6.2"), cloudOS: VPhoneVersion("26.4"),
+                blocked: [dependency],
+            )
+            #expect(FirmwareGuestPatchResolution.missingGLESPrimitiveRestartDependencies(enabled: blocked.enabled) == [dependency])
+            #expect(FirmwareGuestPatchResolution.missingGLESPrimitiveRestartDependencies(enabled: blocked.enabled.subtracting([patch])).isEmpty)
+        }
+        #expect(FirmwareGuestPatchResolution.missingGLESPrimitiveRestartDependencies(enabled: [patch]) == dependencies.sorted())
+        #expect(FirmwareGuestPatchResolution.missingGLESPrimitiveRestartDependencies(enabled: []).isEmpty)
+    }
+
     @Test func `HomeView environment simulation is explicit and limited to its reviewed base`() throws {
         let id = FirmwareGuestSystemPatchSet.homeViewEnvironmentService
         for preset in FirmwarePatchSetCatalog.builtInPresets {
@@ -49,6 +227,151 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(!plan.isEnabled(FirmwareGuestSystemPatchSet.tvLocalActivation))
     }
 
+    /// polarisd exits at once on a VM, and launchd panics on its exit unless
+    /// the headset jobs lose their panic-on-crash policy: without it a freshly
+    /// created visionOS 26.4 guest panics at its first boot.
+    @Test func `visionOS preset keeps headset service exits nonfatal and no other preset does`() throws {
+        let identifier = FirmwareGuestSystemPatchSet.visionOSNonfatalServices
+        for preset in FirmwarePatchSetCatalog.builtInPresets {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion("26.4"), cloudOS: VPhoneVersion("26.4"),
+            )
+            #expect(plan.isEnabled(identifier) == (preset.identifier == VPhonePatchPreset.visionOSIdentifier), "\(preset.identifier)")
+        }
+        let vision = try VPhonePatchPlan.resolve(
+            preset: FirmwarePatchSetCatalog.visionOSPreset, patchSets: FirmwarePatchSetCatalog.bundled,
+            iOSBase: VPhoneVersion("26.4"), cloudOS: VPhoneVersion("26.4"),
+        )
+        for experiment in [FirmwareGuestSystemPatchSet.visionOSVirtualProduct, FirmwareGuestSystemPatchSet.visionOSLegacyUXM,
+                           FirmwareGuestSystemPatchSet.visionOSUXMIPC, FirmwareGuestSystemPatchSet.visionOSSkipBuddy,
+                           FirmwareGuestSystemPatchSet.visionOSEnvironments, FirmwareGuestSystemPatchSet.visionOSFramePacing]
+            + Array(FirmwareGuestSystemPatchSet.visionOSDisplayIPCPatches) {
+            #expect(!vision.isEnabled(experiment), "\(experiment) stays an opt-in experiment")
+        }
+    }
+
+    @Test func `visionOS Buddy preference is independent opt in for the tested OS pair`() throws {
+        let identifier = FirmwareGuestSystemPatchSet.visionOSSkipBuddy
+        let declaration = try #require(FirmwarePatchSetCatalog.allDeclarations.first { $0.identifier == identifier })
+        #expect(declaration.target == .guestFile(path: "/usr/share/vphone/VisionOSSkipBuddy.plist"))
+        #expect(!declaration.bootEssential)
+        for preset in FirmwarePatchSetCatalog.builtInPresets {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion("26.4"), cloudOS: VPhoneVersion("26.4"),
+            )
+            #expect(!plan.isEnabled(identifier), "\(preset.identifier) implicitly skips headset onboarding")
+        }
+        for (base, cloud, applicable) in [
+            ("26.4", "26.4", true), ("26.4.1", "26.4.2", true),
+            ("26.3", "26.4", false), ("26.5", "26.4", false),
+            ("26.4", "26.3", false), ("26.4", "26.5", false), ("27.0", "26.4", false),
+        ] {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: FirmwarePatchSetCatalog.standardPreset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion(base), cloudOS: VPhoneVersion(cloud), allowed: [identifier],
+            )
+            #expect(plan.isEnabled(identifier) == applicable)
+            #expect(!plan.isEnabled(FirmwareGuestSystemPatchSet.visionOSUXMIPC))
+            #expect(FirmwareGuestPatchResolution.missingVisionOSDisplayIPCDependencies(enabled: [identifier]).isEmpty)
+        }
+        #expect(!declaration.applicability.matches(iOSBase: nil, cloudOS: VPhoneVersion("26.4")))
+        #expect(!declaration.applicability.matches(iOSBase: VPhoneVersion("26.4"), cloudOS: nil))
+        #expect(FirmwareGuestPatchResolution.effectiveEnabled(planEnabled: [], selectionEnabled: [identifier]) == [identifier])
+        #expect(FirmwareGuestPatchResolution.effectiveEnabled(planEnabled: [identifier], selectionEnabled: []).isEmpty)
+        #expect(FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: []).contains(identifier))
+    }
+
+    @Test(arguments: [FirmwareGuestSystemPatchSet.visionOSEnvironments, FirmwareGuestSystemPatchSet.visionOSFramePacing])
+    func `visionOS environment and pacing patches are independent opt in for the tested OS pair`(identifier: String) throws {
+        let declaration = try #require(FirmwarePatchSetCatalog.allDeclarations.first { $0.identifier == identifier })
+        let target: VPhonePatchTarget = identifier == FirmwareGuestSystemPatchSet.visionOSEnvironments
+            ? .guestFile(path: FirmwareGuestSystemPatchSet.visionOSEnvironmentsPath)
+            : .guestExecutable(path: FirmwareGuestSystemPatchSet.visionOSFramePacingPath)
+        #expect(declaration.target == target)
+        #expect(!declaration.bootEssential)
+        for preset in FirmwarePatchSetCatalog.builtInPresets {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion("26.4"), cloudOS: VPhoneVersion("26.4"),
+            )
+            #expect(!plan.isEnabled(identifier))
+        }
+        for (base, cloud, applicable) in [
+            ("26.4", "26.4", true), ("26.4.1", "26.4.2", true),
+            ("26.3", "26.4", false), ("26.5", "26.4", false),
+            ("26.4", "26.3", false), ("26.4", "26.5", false), ("27.0", "26.4", false),
+        ] {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: FirmwarePatchSetCatalog.standardPreset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion(base), cloudOS: VPhoneVersion(cloud), allowed: [identifier],
+            )
+            #expect(plan.isEnabled(identifier) == applicable)
+            #expect(!plan.isEnabled(FirmwareGuestSystemPatchSet.visionOSUXMIPC))
+        }
+        #expect(!declaration.applicability.matches(iOSBase: nil, cloudOS: VPhoneVersion("26.4")))
+        #expect(!declaration.applicability.matches(iOSBase: VPhoneVersion("26.4"), cloudOS: nil))
+        #expect(FirmwareGuestPatchResolution.missingVisionOSDisplayIPCDependencies(enabled: [identifier]).isEmpty)
+        #expect(FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: []).contains(identifier))
+    }
+
+    @Test(arguments: FirmwareGuestSystemPatchSet.visionOSDisplayIPCPatches)
+    func `visionOS display and environment lookups are opt in and limited to the tested OS pair`(identifier: String) throws {
+        let adapter = FirmwareGuestSystemPatchSet.visionOSUXMIPC
+        let declaration = try #require(FirmwarePatchSetCatalog.allDeclarations.first { $0.identifier == identifier })
+        let marker: String = switch identifier {
+        case FirmwareGuestSystemPatchSet.visionOSHMDPropertiesIPC: FirmwareGuestSystemPatchSet.visionOSHMDPropertiesIPCMarker
+        case FirmwareGuestSystemPatchSet.visionOSHMDPresentableIPC: FirmwareGuestSystemPatchSet.visionOSHMDPresentableIPCMarker
+        case FirmwareGuestSystemPatchSet.visionOSHMDSystemSetterIPC: FirmwareGuestSystemPatchSet.visionOSHMDSystemSetterIPCMarker
+        case FirmwareGuestSystemPatchSet.visionOSEnvironmentIPC: FirmwareGuestSystemPatchSet.visionOSEnvironmentIPCMarker
+        default: FirmwareGuestSystemPatchSet.visionOSWakeboardSystemIPCMarker
+        }
+        #expect(declaration.target == .guestFile(path: marker))
+        #expect(!declaration.bootEssential)
+        for preset in FirmwarePatchSetCatalog.builtInPresets {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion("26.4"), cloudOS: VPhoneVersion("26.4"),
+            )
+            #expect(!plan.isEnabled(identifier), "\(preset.identifier) implicitly enables the native UI service lookup")
+        }
+        for (base, cloud, applicable) in [
+            ("26.4", "26.4", true), ("26.4.1", "26.4.2", true),
+            ("26.3", "26.4", false), ("26.5", "26.4", false),
+            ("26.4", "26.3", false), ("26.4", "26.5", false), ("27.0", "26.4", false),
+        ] {
+            let plan = try VPhonePatchPlan.resolve(
+                preset: FirmwarePatchSetCatalog.standardPreset, patchSets: FirmwarePatchSetCatalog.bundled,
+                iOSBase: VPhoneVersion(base), cloudOS: VPhoneVersion(cloud), allowed: [identifier, adapter],
+            )
+            #expect(plan.isEnabled(identifier) == applicable)
+        }
+        #expect(!declaration.applicability.matches(iOSBase: nil, cloudOS: VPhoneVersion("26.4")))
+        #expect(!declaration.applicability.matches(iOSBase: VPhoneVersion("26.4"), cloudOS: nil))
+    }
+
+    @Test(arguments: FirmwareGuestSystemPatchSet.visionOSDisplayIPCPatches)
+    func `visionOS display and environment markers depend on the shared adapter and follow current selection independently`(identifier: String) {
+        let adapter = FirmwareGuestSystemPatchSet.visionOSUXMIPC
+        #expect(FirmwareGuestPatchResolution.missingVisionOSDisplayIPCDependencies(enabled: [identifier]) == [adapter])
+        #expect(FirmwareGuestPatchResolution.missingVisionOSDisplayIPCDependencies(enabled: [identifier, adapter]).isEmpty)
+        #expect(FirmwareGuestPatchResolution.missingVisionOSDisplayIPCDependencies(enabled: [adapter]).isEmpty)
+        #expect(FirmwareGuestPatchResolution.missingVisionOSDisplayIPCDependencies(enabled: []).isEmpty)
+        let enabled = FirmwareGuestPatchResolution.effectiveEnabled(planEnabled: [adapter], selectionEnabled: [adapter, identifier])
+        #expect(enabled == [adapter, identifier])
+        let disabled = FirmwareGuestPatchResolution.effectiveEnabled(planEnabled: enabled, selectionEnabled: [adapter])
+        #expect(disabled == [adapter])
+        #expect(FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: disabled).contains(identifier))
+        #expect(!FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: disabled).contains(adapter))
+        let others = FirmwareGuestSystemPatchSet.visionOSDisplayIPCPatches.subtracting([identifier])
+        let remaining = FirmwareGuestPatchResolution.effectiveEnabled(
+            planEnabled: enabled.union(others), selectionEnabled: others.union([adapter]),
+        )
+        #expect(remaining == others.union([adapter]))
+        #expect(FirmwareGuestPatchResolution.missingVisionOSDisplayIPCDependencies(enabled: remaining).isEmpty)
+    }
+
     @Test func `native TV setup adapters are limited to the 27 point 2 4K preset`() throws {
         for identifier in [FirmwareGuestSystemPatchSet.tvSetupDisplayLookup, FirmwareGuestSystemPatchSet.tvSetupFocus, FirmwareGuestSystemPatchSet.tvLocalActivation] {
             for version in ["26.6", "27.0", "27.1", "27.2", "27.3"] {
@@ -65,6 +388,29 @@ struct FirmwareGuestPatchResolutionTests {
             #expect(FirmwareGuestPatchResolution.guestPatchesOff(selectionEnabled: []).contains(identifier))
             #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [identifier]) == [identifier])
         }
+    }
+
+    /// `cfw install` refuses a TV-family guest whose plan enables a guest patch
+    /// its gate does not admit, after the restore has already run. Every shipped
+    /// TV-family preset must pass its own gate on every userland it is offered.
+    @Test func `TV family presets pass their installation gates`() throws {
+        let gates: [(VPhonePatchPreset, (Set<String>) -> [String])] = [
+            (FirmwarePatchSetCatalog.tvOSPreset, { FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: $0) }),
+            (FirmwarePatchSetCatalog.tvOS4KPreset, { FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: $0, arm64eUserland: true) }),
+            (FirmwarePatchSetCatalog.homeViewPreset, { FirmwareGuestPatchResolution.unvalidatedHomeViewGuestPatches(enabled: $0) }),
+            (FirmwarePatchSetCatalog.homePodMiniPreset, { FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: $0) }),
+        ]
+        for (preset, unvalidated) in gates {
+            for version in ["26.5", "26.6", "27.0", "27.2"] {
+                let plan = try VPhonePatchPlan.resolve(
+                    preset: preset, patchSets: FirmwarePatchSetCatalog.bundled,
+                    iOSBase: VPhoneVersion(version), cloudOS: VPhoneVersion("26.4"),
+                )
+                #expect(unvalidated(plan.enabled).isEmpty, "\(preset.identifier) on \(version)")
+            }
+        }
+        #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [FirmwareGuestSystemPatchSet.prebootVirtualUSBDriverKit], arm64eUserland: true)
+            == [FirmwareGuestSystemPatchSet.prebootVirtualUSBDriverKit])
     }
 
     @Test func `legacy TV setup is not selected by any preset`() throws {
@@ -281,6 +627,7 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(unvalidated.contains("system-launchdaemons-boot-environment"))
         #expect(unvalidated.contains("system-extensions-boot-gpu_bundle"))
         #expect(unvalidated.contains(FirmwareGuestSystemPatchSet.paravirtGPUIndexOffset))
+        #expect(unvalidated.contains(FirmwareGuestSystemPatchSet.paravirtGPUPrimitiveRestart))
         #expect(unvalidated.contains("dyld-cfw-camera"))
         #expect(!unvalidated.contains("system-seputil-boot-gigalocker_uuid"))
         #expect(!unvalidated.contains("system-gigalocker-boot-rename"))
@@ -329,8 +676,10 @@ struct FirmwareGuestPatchResolutionTests {
         // The X1 launchd bootstrap shares the load command but stays out.
         let x1 = FirmwareGuestSystemPatchSet.arm64eX1LaunchdBootstrap
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: [x1], arm64eUserland: true) == [x1])
-        // HomePod keeps its own launchd library and no environment.
-        #expect(FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: hooks) == hooks.sorted())
+        // HomePod keeps its own launchd library and no environment. Its
+        // launchd takes the jetsam guard (userspace debugging) into the same
+        // copy as the persona adapter, so that patch alone is admitted.
+        #expect(FirmwareGuestPatchResolution.unvalidatedHomePodGuestPatches(enabled: hooks) == ["system-launchdaemons-boot-environment"])
     }
 
     @Test(arguments: ["27.0", "27.2"])
@@ -352,6 +701,7 @@ struct FirmwareGuestPatchResolutionTests {
         #expect(tv4K.isEnabled("system-vphoned-boot-install"))
         // The upstream GPU heap index patch stays out, as for every TV guest.
         #expect(!tv4K.isEnabled(FirmwareGuestSystemPatchSet.paravirtGPUIndexOffset))
+        #expect(!tv4K.isEnabled(FirmwareGuestSystemPatchSet.paravirtGPUPrimitiveRestart))
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: tv4K.enabled, arm64eUserland: true).isEmpty)
         #expect(FirmwareGuestPatchResolution.unvalidatedTVGuestPatches(enabled: tv4K.enabled) == [gpu, ota].sorted())
         // The 27 shared-cache patches are on but meet only a 27 userland.
@@ -447,6 +797,7 @@ struct FirmwareGuestPatchResolutionTests {
             FirmwareGuestSystemPatchSet.tvTPRO,
             FirmwareKernelCustomFirmwarePatchSet.tvTPROPagers,
             FirmwareGuestSystemPatchSet.paravirtGPUIndexOffset,
+            FirmwareGuestSystemPatchSet.paravirtGPUPrimitiveRestart,
             "system-launchdaemons-boot-environment",
             "dyld-cfw-camera",
         ]

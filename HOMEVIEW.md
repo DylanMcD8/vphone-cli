@@ -6,6 +6,12 @@ submitted upstream in [Lakr233/vphone-cli#786](https://github.com/Lakr233/vphone
 The starting commit for the local additions is
 `e1ef98f` (HomeView distance sensing override).
 
+Upstream 2.16.1 is integrated through `d1c36fa8` (November 10, 2026).
+The merge preserves the custom panel, artwork, frame/input mapping, PNG capture,
+manual clock, and guest helpers. Upstream's typed method dispatcher declares
+the manual-clock parameter explicitly so it is not filtered out. The shared
+viewport calculation now uses upstream's equivalent geometry helper.
+
 The local additions include:
 
 - BreadBoard Metal compiler access to remove shader retry stalls.
@@ -34,16 +40,23 @@ The prior local checks passed 62 focused patch/entitlement tests, 14 geometry
 tests, bundle admission/signature verification, and live clock override/reset
 checks. These are recorded local results, not a claim that GitHub CI ran.
 
+The 2.16.1 integration passed 29 controls checks, 60 frame/input/toolbar
+checks, 16 core geometry tests, 48 selected firmware preset/HomeView sandbox
+tests, 593 daemon logic checks, and the 198-method catalog plus its mutation
+checks. Manual-clock and automatic-reset requests were also exercised through
+the actual method dispatcher. Live validation of the rebuilt app requires
+macOS to authorize its new executable signature.
+
 This is a source repository. The working VM, firmware, extracted wallpapers,
 backups, and diagnostic logs stay in the local HomeView working folder. Git
-history and upstream licensing are preserved. This is a public standalone
+history and upstream licensing are preserved. This is a public forked
 development copy with `homeview` as its default branch. Anyone can read or
 clone it over HTTPS without a GitHub account or invitation. Firmware must be
 obtained separately; see the setup prompt at the top of `README.md`.
 
-The three inherited GitHub Actions workflows are preserved as inactive
+The inherited GitHub Actions workflows are preserved as inactive
 templates in `Research/Tools/HomeView/UpstreamWorkflows/`. They were archived
 during the initial upload because its token lacked the `workflow` scope.
-These workflows also require the upstream's `xcode-27` runner. Restore them to
+The website workflow added upstream is archived alongside them. Build workflows require the upstream's `xcode-27` runner. Restore them to
 `.github/workflows/` after arranging workflow-capable authentication and a
 compatible runner if automated builds are wanted.

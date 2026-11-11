@@ -32,11 +32,7 @@ public struct VPhoneDisplayGeometry: Equatable, Sendable {
     /// number of Mac view points. The display container aligns the viewport
     /// with the backing view's left and high-y edges.
     public static func viewportBounds(viewBounds: CGRect, backingPixels: CGSize, activePixels: CGSize) -> CGRect {
-        guard backingPixels.width > 0, backingPixels.height > 0,
-              activePixels.width > 0, activePixels.height > 0 else { return viewBounds }
-        let width = viewBounds.width * min(activePixels.width / backingPixels.width, 1)
-        let height = viewBounds.height * min(activePixels.height / backingPixels.height, 1)
-        return CGRect(x: viewBounds.minX, y: viewBounds.maxY - height, width: width, height: height)
+        activeViewportBounds(viewBounds: viewBounds, activePixels: activePixels, backingPixels: backingPixels)
     }
 
     /// A display with no size, or a view with no area, maps onto the whole
@@ -57,6 +53,18 @@ public struct VPhoneDisplayGeometry: Equatable, Sendable {
             width: size.width,
             height: size.height,
         )
+    }
+
+    /// The visible panel inside a scaled backing view. Pixel dimensions are
+    /// ratios: guest points differ from AppKit points after a window resize.
+    public static func activeViewportBounds(
+        viewBounds: CGRect, activePixels: CGSize, backingPixels: CGSize
+    ) -> CGRect {
+        guard activePixels.width > 0, activePixels.height > 0,
+              backingPixels.width > 0, backingPixels.height > 0 else { return viewBounds }
+        let width = viewBounds.width * min(1, activePixels.width / backingPixels.width)
+        let height = viewBounds.height * min(1, activePixels.height / backingPixels.height)
+        return CGRect(x: viewBounds.minX, y: viewBounds.maxY - height, width: width, height: height)
     }
 
     /// A view point as a 0...1 display position with y down. Points on the

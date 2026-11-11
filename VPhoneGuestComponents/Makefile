@@ -8,6 +8,8 @@ CLANG := xcrun --sdk iphoneos clang
 MACOS_SDK := $(shell xcrun --sdk macosx --show-sdk-path)
 MACH_EXC_DEFS := $(MACOS_SDK)/usr/include/mach/mach_exc.defs
 LAUNCHHOOK_GENERATED := $(OUT)/generated/launchhook
+MACHPORTS_GENERATED := $(OUT)/generated/machports
+MACHPORTS_STAMP := $(MACHPORTS_GENERATED)/.stamp
 GUEST_C_FLAGS := -arch arm64e -miphoneos-version-min=26.0 -Os
 COMMON_FLAGS := $(GUEST_C_FLAGS) -fobjc-arc
 
@@ -38,11 +40,11 @@ VCAMCAPTURED_INPUTS := $(call find_headers,$(VCAM_HEADER_DIRS)) \
 	$(call find_folders,$(VCAM_HEADER_DIRS))
 VCAMCAPTURED_INCLUDE_FLAGS := $(addprefix -I,$(call find_folders,VCamCaptured) $(VCAM_SHARED_DIRS))
 LAUNCHHOOK := $(STAGE)/launchhook/launchdhook-vphone.dylib
-LAUNCHHOOK_SOURCES := $(wildcard LaunchHook/*.c) Shared/RootHideLoaderLinks.c Shared/VPhoneX1Spawn.c
+LAUNCHHOOK_SOURCES := $(wildcard LaunchHook/*.c) Shared/RootHideLoaderLinks.c Shared/VPhoneX1Spawn.c Shared/VPhoneMachPortsCompat.c
 LAUNCHHOOK_INCLUDES := $(wildcard LaunchHook/*.h LaunchHook/*.inc Shared/*.h)
 SYSTEMHOOK := $(STAGE)/systemhook/SystemHook-vphone.dylib
-SYSTEMHOOK_SOURCES := $(wildcard SystemHook/*.c) $(wildcard FlutterRemapFix/*.c) Shared/RootHideLoaderLinks.c Shared/VPhoneX1Spawn.c
-SYSTEMHOOK_INCLUDES := $(wildcard SystemHook/*.h SystemHook/*.inc FlutterRemapFix/*.h Shared/*.h)
+SYSTEMHOOK_SOURCES := $(wildcard SystemHook/*.c) $(wildcard FlutterRemapFix/*.c) Shared/RootHideLoaderLinks.c Shared/VPhoneX1Spawn.c Shared/VPhoneMachPortsCompat.c LaunchHook/VPhoneMachMessage.c MISFix/MISFixDetour.c
+SYSTEMHOOK_INCLUDES := $(wildcard SystemHook/*.h SystemHook/*.inc FlutterRemapFix/*.h Shared/*.h) MISFix/MISFixDetour.h MISFix/MISFixConditionalBranch.h MISFix/MISFixConfig.h
 # libmis is not a framework and has no header; the iPhoneOS SDK does ship
 # libmis.tbd, so the interposed symbols bind two-level like any other import
 # rather than through flat dynamic lookup.
@@ -86,6 +88,9 @@ PREFSFIX_SOURCES := $(wildcard PrefsFix/*.m PrefsFix/*.c)
 PREFSFIX_INCLUDES := $(wildcard PrefsFix/*.h)
 # Foundation + ObjC runtime for the sign-in presentation swizzles; AppleAccountUI
 # etc. are reached through the runtime at runtime, so nothing is needed at link.
+IOS16DESKTOP := $(STAGE)/ios16desktop/libvphoneios16desktop.dylib
+IOS16MIGRATION := $(STAGE)/ios16migration/libvphoneios16migration.dylib
+IOS17DESKTOP := $(STAGE)/ios17desktop/libvphoneios17desktop.dylib
 SIGNINFIX := $(STAGE)/signinfix/libsigninfix.dylib
 SIGNINFIX_SOURCES := $(wildcard SignInFix/*.m SignInFix/*.c)
 SIGNINFIX_INCLUDES := $(wildcard SignInFix/*.h)
@@ -96,8 +101,11 @@ ACCELEROMETER := $(STAGE)/accelerometer/libvphoneaccelerometer.dylib
 ACCELEROMETER_SOURCES := $(call find_sources,Accelerometer)
 ACCELEROMETER_INPUTS := $(call find_headers,Accelerometer) $(call find_folders,Accelerometer)
 HINGE := $(STAGE)/hinge/libvphonehinge.dylib
-HINGE_SOURCES := $(call find_sources,Hinge)
-HINGE_INPUTS := $(call find_headers,Hinge) $(call find_folders,Hinge)
+# The hinge detours backboardd's HID server to take a hinge value a client
+# dispatches (WebDriverAgent), with libmisfix's detour.
+HINGE_SOURCES := $(call find_sources,Hinge) MISFix/MISFixDetour.c MISFix/MISFixConfig.c
+HINGE_INPUTS := $(call find_headers,Hinge) $(call find_folders,Hinge) MISFix/MISFixDetour.h \
+	MISFix/MISFixConditionalBranch.h MISFix/MISFixConfig.h
 # The SpringBoard guard that lets the foldable product identity survive on a
 # single-display guest. See FoldGuard/libvphonefoldguard.m.
 FOLDGUARD := $(STAGE)/foldguard/libvphonefoldguard.dylib
@@ -116,12 +124,18 @@ CRYPTEXSTAGING := $(STAGE)/cryptexstaging/libvphonecryptexstaging.dylib
 CRYPTEXSTAGING_SOURCE := CryptexStagingFix/libvphonecryptexstaging.c
 HOMEPODPERSONA := $(STAGE)/homepodpersona/libvphoneinstallpersona.dylib
 HOMEPODPERSONA_INPUTS := HomePodInstallPersona/libvphoneinstallpersona.c LaunchHook/InstallCoordinationPersona.h
+VISIONOSIPC := $(STAGE)/visionosipc/libvphonevisionosipc.dylib
+VISIONOSIPC_SOURCE := VisionOSIPC/libvphonevisionosipc.c
+VISIONOSIPC_INPUTS := $(VISIONOSIPC_SOURCE) $(wildcard VisionOSIPC/*.h)
 HOMEPODMISFIX := $(STAGE)/homepodmisfix/libvphonehomepodmisfix.dylib
 HOMEPODMISFIX_SOURCES := MISFix/MISFixSignature.c MISFix/MISFixDetour.c MISFix/MISFixConfig.c MISFix/MISFixInstallPolicy.c
 HOMEPODMISFIX_INPUTS := $(HOMEPODMISFIX_SOURCES) MISFix/MISFixDetour.h MISFix/MISFixConditionalBranch.h MISFix/MISFixConfig.h
 HOMEPODSETUP := $(STAGE)/homepodsetup/vphone-homepod-setup
 HOMEPODSETUP_SOURCES := $(call find_sources,HomePodSetup)
 HOMEPODSETUP_INPUTS := $(call find_headers,HomePodSetup) HomePodSetup/com.vphone.homepod-setup.plist
+VISIONOSPREFERENCES := $(STAGE)/visionospreferences/vphone-visionos-preferences
+VISIONOSPREFERENCES_SOURCES := $(call find_sources,VisionOSPreferences)
+VISIONOSPREFERENCES_INPUTS := $(call find_headers,VisionOSPreferences) VisionOSPreferences/com.vphone.visionos-preferences.plist
 TVSETUPFOCUS := $(STAGE)/tvsetupfocus/libvphonetvsetupfocus.dylib
 TVSETUPFOCUS_SOURCES := $(call find_sources,TVSetupFocus)
 TVSETUPFOCUS_INPUTS := $(call find_headers,TVSetupFocus) $(call find_folders,TVSetupFocus)
@@ -145,6 +159,62 @@ GPU_DYNAMIC_LOOKUP_SYMS := \
 	-Wl,-U,_LLVMGetMDNodeNumOperands \
 	-Wl,-U,_LLVMGetMDNodeOperands \
 	-Wl,-U,_LLVMGetValueName2 \
+	-Wl,-U,_LLVMGetModuleContext \
+	-Wl,-U,_LLVMInt32TypeInContext \
+	-Wl,-U,_LLVMConstInt \
+	-Wl,-U,_LLVMMDNodeInContext \
+	-Wl,-U,_LLVMAddNamedMetadataOperand \
+	-Wl,-U,_LLVMABIAlignmentOfType \
+	-Wl,-U,_LLVMABISizeOfType \
+	-Wl,-U,_LLVMCountParamTypes \
+	-Wl,-U,_LLVMCountStructElementTypes \
+	-Wl,-U,_LLVMCreateMemoryBufferWithMemoryRangeCopy \
+	-Wl,-U,_LLVMDisposeMessage \
+	-Wl,-U,_LLVMGetArrayLength \
+	-Wl,-U,_LLVMGetElementType \
+	-Wl,-U,_LLVMGetIntTypeWidth \
+	-Wl,-U,_LLVMGetMDString \
+	-Wl,-U,_LLVMGetModuleDataLayout \
+	-Wl,-U,_LLVMGetParamTypes \
+	-Wl,-U,_LLVMGetPointerAddressSpace \
+	-Wl,-U,_LLVMGetReturnType \
+	-Wl,-U,_LLVMGetStructName \
+	-Wl,-U,_LLVMGetTypeKind \
+	-Wl,-U,_LLVMGetVectorSize \
+	-Wl,-U,_LLVMGlobalGetValueType \
+	-Wl,-U,_LLVMIsAMDString \
+	-Wl,-U,_LLVMParseIRInContext \
+	-Wl,-U,_LLVMPrintModuleToString \
+	-Wl,-U,_LLVMStructGetTypeAtIndex \
+	-Wl,-U,_LLVMIsAFunction \
+	-Wl,-U,_LLVMIsAConstantInt \
+	-Wl,-U,_LLVMTypeOf \
+	-Wl,-U,_LLVMConstIntGetZExtValue \
+	-Wl,-U,_LLVMGetParam \
+	-Wl,-U,_LLVMGetFirstUse \
+	-Wl,-U,_LLVMGetFirstBasicBlock \
+	-Wl,-U,_LLVMGetNextBasicBlock \
+	-Wl,-U,_LLVMIsAReturnInst \
+	-Wl,-U,_LLVMGetNumOperands \
+	-Wl,-U,_LLVMGetOperand \
+	-Wl,-U,_LLVMBuildFAdd \
+	-Wl,-U,_LLVMBuildFMul \
+	-Wl,-U,_LLVMBuildExtractValue \
+	-Wl,-U,_LLVMBuildInsertValue \
+	-Wl,-U,_LLVMGetFirstInstruction \
+	-Wl,-U,_LLVMGetNextInstruction \
+	-Wl,-U,_LLVMIsAPHINode \
+	-Wl,-U,_LLVMCreateBuilderInContext \
+	-Wl,-U,_LLVMPositionBuilderBefore \
+	-Wl,-U,_LLVMDisposeBuilder \
+	-Wl,-U,_LLVMConstReal \
+	-Wl,-U,_LLVMBuildExtractElement \
+	-Wl,-U,_LLVMBuildFSub \
+	-Wl,-U,_LLVMBuildInsertElement \
+	-Wl,-U,_LLVMReplaceAllUsesWith \
+	-Wl,-U,_LLVMSetOperand \
+	-Wl,-U,_LLVMVerifyModule \
+	-Wl,-U,_LLVMDisposeModule \
 	-Wl,-U,_MTLGPUCompilerCreate \
 	-Wl,-U,_MTLGPUCompilerDestroy \
 	-Wl,-U,_MTLDowngradeAIRModule \
@@ -158,7 +228,7 @@ GPU_DYNAMIC_LOOKUP_SYMS := \
 VIRTIOSOUND := $(STAGE)/virtiosound/VPhoneVirtIOSound.driver
 VIRTIOSOUND_SOURCES := $(wildcard VirtIOSound/*.m VirtIOSound/*.c)
 VIRTIOSOUND_INCLUDES := $(wildcard VirtIOSound/*.h) VirtIOSound/Info.plist VirtIOSound/AudioServerDriver.tbd
-ARTIFACTS := $(CAMFIX) $(VCAMCAPTURED) $(LAUNCHHOOK) $(SYSTEMHOOK) $(MISFIX) $(HAPTICSFIX) $(BATTERYHEALTHFIX) $(DEVICEHUBFIX) $(DEVICENAME) $(PREFSFIX) $(SIGNINFIX) $(GYROSCOPE) $(ACCELEROMETER) $(HINGE) $(FOLDGUARD) $(FOLDDISPLAY) $(ATTITUDE) $(HOMEPODDISPLAY) $(CRYPTEXSTAGING) $(HOMEPODPERSONA) $(HOMEPODMISFIX) $(HOMEPODSETUP) $(TVSETUPFOCUS) $(GPU_PLUGIN) $(VIRTIOSOUND)
+ARTIFACTS := $(IOS16DESKTOP) $(IOS16MIGRATION) $(IOS17DESKTOP) $(CAMFIX) $(VCAMCAPTURED) $(LAUNCHHOOK) $(SYSTEMHOOK) $(MISFIX) $(HAPTICSFIX) $(BATTERYHEALTHFIX) $(DEVICEHUBFIX) $(DEVICENAME) $(PREFSFIX) $(SIGNINFIX) $(GYROSCOPE) $(ACCELEROMETER) $(HINGE) $(FOLDGUARD) $(FOLDDISPLAY) $(ATTITUDE) $(HOMEPODDISPLAY) $(CRYPTEXSTAGING) $(HOMEPODPERSONA) $(HOMEPODMISFIX) $(HOMEPODSETUP) $(TVSETUPFOCUS) $(GPU_PLUGIN) $(VIRTIOSOUND) $(VISIONOSIPC) $(VISIONOSPREFERENCES)
 PLISTS := $(STAGE)/camfix/libcamfix.plist $(STAGE)/vcamcaptured/libvcamcaptured.plist \
 	$(STAGE)/misfix/libmisfix.plist
 GPU_PROVENANCE := $(STAGE)/gpu/README.md
@@ -204,7 +274,7 @@ gpu: $(GPU_PLUGIN)
 
 package: all
 	@rm -f $(ARCHIVE)
-	@/usr/bin/tar -cf $(ARCHIVE) -C $(STAGE) camfix vcamcaptured launchhook systemhook misfix hapticsfix batteryhealthfix devicehubfix devicename prefsfix signinfix gyroscope accelerometer hinge foldguard attitude homepoddisplay cryptexstaging homepodpersona homepodmisfix homepodsetup tvsetupfocus gpu virtiosound folddisplay
+	@/usr/bin/tar -cf $(ARCHIVE) -C $(STAGE) ios16desktop ios16migration ios17desktop camfix vcamcaptured launchhook systemhook misfix hapticsfix batteryhealthfix devicehubfix devicename prefsfix signinfix gyroscope accelerometer hinge foldguard attitude homepoddisplay cryptexstaging homepodpersona homepodmisfix homepodsetup tvsetupfocus gpu virtiosound folddisplay visionosipc visionospreferences
 	@echo "Packaged $(ARCHIVE)"
 
 test-loader-links:
@@ -225,6 +295,18 @@ test-x1-lowering:
 	xcrun --sdk macosx clang -Wall -Wextra -Werror -ILaunchHook \
 		-o $(OUT)/X1LoweringTests Tests/X1LoweringTests.c LaunchHook/VPhoneX1Lowering.c
 	@$(OUT)/X1LoweringTests
+
+# Host proof harness for the compiler plugin's OpenGL ES path: the AIR modules
+# AppleMetalGLRenderer hands it, through the plugin and into the host's Metal.
+# The plugin resolves libLLVM and libGPUCompiler at load, so it and the tests
+# are one dylib the runner loads after them.
+.PHONY: test-gles-air
+test-gles-air:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang++ -std=c++17 -fobjc-arc -O1 -Wall -Wextra -IGraphicLoader -dynamiclib -Wl,-undefined,dynamic_lookup \
+		-o $(OUT)/GLESAIRTests.dylib Tests/GLESAIRTests.mm $(GPU_PLUGIN_SOURCES) -framework Foundation -framework Metal
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -o $(OUT)/GLESAIRTestRunner Tests/GLESAIRTestRunner.c
+	@$(OUT)/GLESAIRTestRunner $(OUT)/GLESAIRTests.dylib Tests/GLESAIRFixtures
 
 # Host proof harness for libdevicename's name decoding, configd publication
 # rewrite and lockdownd rename decision.
@@ -290,7 +372,18 @@ $(VCAMCAPTURED): $(VCAMCAPTURED_SOURCES) $(VCAMCAPTURED_INPUTS) | $(STAGE)/vcamc
 		-framework CoreGraphics
 	@codesign --force --sign - $@
 
-$(LAUNCHHOOK): $(LAUNCHHOOK_SOURCES) $(LAUNCHHOOK_INCLUDES) LaunchHook Shared $(MACH_EXC_DEFS) | $(STAGE)/launchhook
+$(MACHPORTS_STAMP): Shared/VPhoneMachPorts.defs $(MACOS_SDK)/usr/include/mach/task.defs
+	@mkdir -p $(MACHPORTS_GENERATED)
+	xcrun --sdk macosx mig -arch arm64 -isysroot $(MACOS_SDK) \
+		-server /dev/null -sheader /dev/null \
+		-user $(MACHPORTS_GENERATED)/VPhoneMachPortsUser.c \
+		-header $(MACHPORTS_GENERATED)/VPhoneMachPortsRPC.h Shared/VPhoneMachPorts.defs
+	/usr/bin/sed -i '' 's/msg_result = mach_msg(/msg_result = vp_mach_msg_kobject(/g' $(MACHPORTS_GENERATED)/VPhoneMachPortsUser.c
+	@/usr/bin/grep -q 'msg_result = vp_mach_msg_kobject(' $(MACHPORTS_GENERATED)/VPhoneMachPortsUser.c
+	@! /usr/bin/grep -q 'msg_result = mach_msg(' $(MACHPORTS_GENERATED)/VPhoneMachPortsUser.c
+	@touch $@
+
+$(LAUNCHHOOK): $(LAUNCHHOOK_SOURCES) $(LAUNCHHOOK_INCLUDES) LaunchHook Shared $(MACH_EXC_DEFS) $(MACHPORTS_STAMP) | $(STAGE)/launchhook
 	@mkdir -p $(LAUNCHHOOK_GENERATED)
 	xcrun --sdk macosx mig -arch arm64 -isysroot $(MACOS_SDK) \
 		-server $(LAUNCHHOOK_GENERATED)/mach_excServer.c \
@@ -302,16 +395,17 @@ $(LAUNCHHOOK): $(LAUNCHHOOK_SOURCES) $(LAUNCHHOOK_INCLUDES) LaunchHook Shared $(
 	@/usr/bin/grep -q 'msg_result = vp_mach_msg_kobject(' $(LAUNCHHOOK_GENERATED)/mach_excUser.c
 	@! /usr/bin/grep -q 'msg_result = mach_msg(' $(LAUNCHHOOK_GENERATED)/mach_excUser.c
 	$(CLANG) $(GUEST_C_FLAGS) -dynamiclib \
-		-I$(LAUNCHHOOK_GENERATED) -ILaunchHook -include VPhoneMachMessage.h \
+		-I$(LAUNCHHOOK_GENERATED) -I$(MACHPORTS_GENERATED) -ILaunchHook -include VPhoneMachMessage.h \
 		-install_name /usr/lib/launchdhook-vphone.dylib \
 		-o $@ $(LAUNCHHOOK_SOURCES) $(LAUNCHHOOK_GENERATED)/mach_excServer.c \
-		$(LAUNCHHOOK_GENERATED)/mach_excUser.c -Wl,-not_for_dyld_shared_cache
+		$(LAUNCHHOOK_GENERATED)/mach_excUser.c $(MACHPORTS_GENERATED)/VPhoneMachPortsUser.c -Wl,-not_for_dyld_shared_cache
 	@codesign --force --sign - $@
 
-$(SYSTEMHOOK): $(SYSTEMHOOK_SOURCES) $(SYSTEMHOOK_INCLUDES) SystemHook Shared | $(STAGE)/systemhook
+$(SYSTEMHOOK): $(SYSTEMHOOK_SOURCES) $(SYSTEMHOOK_INCLUDES) SystemHook Shared $(MACHPORTS_STAMP) | $(STAGE)/systemhook
 	$(CLANG) $(GUEST_C_FLAGS) -dynamiclib \
+		-I$(MACHPORTS_GENERATED) -ILaunchHook -include VPhoneMachMessage.h \
 		-install_name /usr/lib/SystemHook-vphone.dylib \
-		-o $@ $(SYSTEMHOOK_SOURCES) -Wl,-not_for_dyld_shared_cache
+		-o $@ $(SYSTEMHOOK_SOURCES) $(MACHPORTS_GENERATED)/VPhoneMachPortsUser.c -framework IOKit -Wl,-not_for_dyld_shared_cache
 	@codesign --force --sign - $@
 
 $(MISFIX): $(MISFIX_SOURCES) $(MISFIX_INCLUDES) MISFix | $(STAGE)/misfix
@@ -448,6 +542,25 @@ $(HOMEPODPERSONA): $(HOMEPODPERSONA_INPUTS)
 		-o $@ $< -Wl,-not_for_dyld_shared_cache
 	@codesign --force --sign - $@
 
+# Pure libSystem imports are shared with visionOS. Build with the installed iOS
+# SDK and retag only LC_BUILD_VERSION before signing the staged library.
+.PHONY: visionos-ipc test-visionos-ipc
+visionos-ipc: $(VISIONOSIPC)
+
+$(VISIONOSIPC): $(VISIONOSIPC_INPUTS)
+	@mkdir -p $(STAGE)/visionosipc
+	$(CLANG) $(GUEST_C_FLAGS) -Wall -Wextra -Werror -Wno-unused-parameter -dynamiclib \
+		-install_name /usr/lib/libvphonevisionosipc.dylib \
+		-o $@ $(VISIONOSIPC_SOURCE) -Wl,-not_for_dyld_shared_cache -Wl,-no_adhoc_codesign
+	xcrun vtool -set-build-version 11 26.4 26.4 -replace -output $@ $@
+	@codesign --force --sign - $@
+
+test-visionos-ipc:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -arch arm64 -O1 -Wall -Wextra -Werror -Wno-unused-parameter \
+		-o $(OUT)/VisionOSIPCTests VisionOSIPC/Tests/VisionOSIPCTests.c
+	@$(OUT)/VisionOSIPCTests
+
 $(CRYPTEXSTAGING): $(CRYPTEXSTAGING_SOURCE)
 	@mkdir -p $(STAGE)/cryptexstaging
 	xcrun --sdk appletvos clang -arch arm64e -mtvos-version-min=27.0 -Os \
@@ -476,6 +589,26 @@ $(HOMEPODSETUP): $(HOMEPODSETUP_SOURCES) $(HOMEPODSETUP_INPUTS)
 		-Wall -Wextra -Werror -o $@ $(HOMEPODSETUP_SOURCES) -framework Foundation
 	@cp HomePodSetup/com.vphone.homepod-setup.plist $(STAGE)/homepodsetup/
 	@codesign --force --sign - $@
+
+.PHONY: visionos-preferences test-visionos-preferences
+visionos-preferences: $(VISIONOSPREFERENCES)
+
+$(VISIONOSPREFERENCES): $(VISIONOSPREFERENCES_SOURCES) $(VISIONOSPREFERENCES_INPUTS)
+	@mkdir -p $(STAGE)/visionospreferences
+	$(CLANG) $(GUEST_C_FLAGS) -fobjc-arc -fblocks \
+		-Wall -Wextra -Werror -o $@ $(VISIONOSPREFERENCES_SOURCES) -framework Foundation
+	# Built against the iOS SDK, like the IPC adapter, so a bundle build needs no
+	# visionOS platform; the guest still loads it only as a visionOS executable.
+	xcrun vtool -set-build-version 11 26.4 26.4 -replace -output $@ $@
+	@cp VisionOSPreferences/com.vphone.visionos-preferences.plist $(STAGE)/visionospreferences/
+	@codesign --force --sign - $@
+
+test-visionos-preferences:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -fobjc-arc -fblocks -Wall -Wextra -Werror -IVisionOSPreferences \
+		Tests/VisionOSPreferencesTests.m VisionOSPreferences/VisionOSBuddyPreferences.m \
+		-framework Foundation -o $(OUT)/visionos-preferences-tests
+	$(OUT)/visionos-preferences-tests
 
 .PHONY: test-homepod-setup
 test-homepod-setup:
@@ -605,6 +738,13 @@ test-installcoordination-persona:
 		-o $(OUT)/InstallCoordinationPersonaTests Tests/InstallCoordinationPersonaTests.c
 	@$(OUT)/InstallCoordinationPersonaTests
 
+.PHONY: test-x1-task-exceptions
+test-x1-task-exceptions:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -fsanitize=address,undefined \
+		-o $(OUT)/X1TaskExceptionTests Tests/X1TaskExceptionTests.c
+	@$(OUT)/X1TaskExceptionTests
+
 .PHONY: test-flutter-remap test-flutter-remap-repair
 test-flutter-remap:
 	@mkdir -p $(OUT)
@@ -621,3 +761,56 @@ build-executable-remap-probe:
 	@mkdir -p $(OUT)
 	xcrun --sdk iphoneos swiftc -target arm64-apple-ios26.0 -O Tests/ExecutableRemapProbe.swift -module-cache-path $(OUT)/probe-module-cache -o $(OUT)/ExecutableRemapProbe
 	codesign --force --sign - --timestamp=none $(OUT)/ExecutableRemapProbe
+
+$(IOS17DESKTOP): IOS17Desktop/libvphoneios17desktop.m
+	@mkdir -p $(STAGE)/ios17desktop
+	$(CLANG) $(COMMON_FLAGS) -dynamiclib -install_name /usr/lib/libvphoneios17desktop.dylib -o $@ $< -framework Foundation -lobjc -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+.PHONY: test-ios17-desktop
+test-ios17-desktop:
+	@mkdir -p ../.build/ios17-desktop-tests
+	xcrun --sdk macosx clang -fobjc-arc -framework Foundation -Wno-unused-parameter -dynamiclib IOS17Desktop/libvphoneios17desktop.m -o ../.build/ios17-desktop-tests/hook.dylib
+	xcrun --sdk macosx clang -fobjc-arc -framework Foundation Tests/IOS17DesktopTests.m -o ../.build/ios17-desktop-tests/test
+	../.build/ios17-desktop-tests/test ../.build/ios17-desktop-tests/hook.dylib 17 SpringBoard
+	../.build/ios17-desktop-tests/test ../.build/ios17-desktop-tests/hook.dylib 18 SpringBoard
+	../.build/ios17-desktop-tests/test ../.build/ios17-desktop-tests/hook.dylib 17 OtherProcess
+
+.PHONY: test-ios16-surface
+test-ios16-surface:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -fsanitize=address,undefined -ISystemHook \
+		-o $(OUT)/IOS16SurfaceReplyTest Tests/IOS16SurfaceReplyTest.c SystemHook/VPhoneIOS16SurfaceReply.c
+	@$(OUT)/IOS16SurfaceReplyTest
+
+.PHONY: test-ios18-gpu
+test-ios18-gpu:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -fsanitize=address,undefined -ISystemHook \
+		-o $(OUT)/IOS18GPUTransportTest Tests/IOS18GPUTransportTest.c SystemHook/VPhoneIOS18GPUTransport.c
+	@$(OUT)/IOS18GPUTransportTest
+
+.PHONY: test-mach-ports-compat
+test-mach-ports-compat: $(MACHPORTS_STAMP)
+	@mkdir -p ../.build/machports-test
+	xcrun --sdk macosx clang -DVP_MACH_PORTS_COMPAT_TEST -IShared -ILaunchHook -I$(MACHPORTS_GENERATED) -include VPhoneMachMessage.h \
+		Shared/VPhoneMachPortsCompat.c $(MACHPORTS_GENERATED)/VPhoneMachPortsUser.c LaunchHook/VPhoneMachMessage.c \
+		Tests/MachPortsCompatTests.c -o ../.build/machports-test/test
+	../.build/machports-test/test
+
+$(IOS16MIGRATION): IOS16Migration/libvphoneios16migration.m
+	@mkdir -p $(STAGE)/ios16migration
+	$(CLANG) $(COMMON_FLAGS) -dynamiclib -install_name /usr/lib/libvphoneios16migration.dylib -o $@ $< -framework Foundation -lobjc -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+$(IOS16DESKTOP): IOS16Desktop/libvphoneios16desktop.m ../VPhoneDaemon/Native/Include/VPhoneIOS16LabPolicy.h
+	@mkdir -p $(STAGE)/ios16desktop
+	$(CLANG) $(COMMON_FLAGS) -I../VPhoneDaemon/Native/Include -dynamiclib -install_name /usr/lib/libvphoneios16desktop.dylib -o $@ $< -framework Foundation -lobjc -Wl,-not_for_dyld_shared_cache
+	@codesign --force --sign - $@
+
+.PHONY: test-ios16-lab-policy
+test-ios16-lab-policy:
+	@mkdir -p $(OUT)
+	xcrun --sdk macosx clang -Wall -Wextra -Werror -fsanitize=address,undefined \
+		-I../VPhoneDaemon/Native/Include -o $(OUT)/IOS16LabPolicyTest Tests/IOS16LabPolicyTest.c
+	@$(OUT)/IOS16LabPolicyTest

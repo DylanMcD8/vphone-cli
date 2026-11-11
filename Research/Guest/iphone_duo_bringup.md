@@ -227,6 +227,55 @@ first screen within seconds of launch. Standalone X1 binaries outside the
 cache (app executables, plug-ins such as `VirtualAudio.plugin`, daemons)
 still use the on-demand handler.
 
+### Undo words instead of page runs (issue #789, 2026-11-03)
+
+`cfw install` on a 16 GB M4 Mac mini stopped after `X1 bootstrap cache:
+228314 instruction rewrites in 2875 page run(s)` for over an hour and the
+host slowly froze. The lowering was not the problem; its undo log was. The
+chunk set captured the original bytes of every page run it wrote, and the
+verb merged them into `.vphone-dsc-undo.json` as base64. Measured on a stock
+24A94425 cache with the 2.15.0 CLI (M5 Pro, 64 GB):
+
+| Step | 2.15.0 | Words |
+| --- | --- | --- |
+| `patch-arm64e-x1-bootstrap-cache` | 3.6 s, 0.45 GB peak | 1.6–5.2 s, 0.20 GB |
+| `patch-arm64e-x1-cache` | 99 s, **24.5 GB** peak | 48–68 s, **3.2 GB** |
+| `patch-iomfb-force-kern` (the next verb, 10 sites) | 33 s, 19.6 GB | 0.03 s, 0.01 GB |
+| Undo data on the guest | 4.4 GB JSON | 1.8 KB JSON + 298 MB words |
+| `patch-dsc-revert` of all three | — | 12.5 s, 0.42 GB |
+
+Every cache verb that recorded anything after the X1 step decoded and
+re-encoded the whole 4.4 GB file, about 20 GB each.
+
+The X1 lowering now records one (address, original word) pair per
+instruction it changed, 12 bytes apiece, in `.vphone-dsc-undo.words` beside
+the JSON log (`DyldSharedCacheUndoLog.words`), and writes its page runs with
+`capturingOriginal: false`. The JSON format is unchanged, so an older CLI
+reads every other patch's records and treats the X1 patches as having none.
+Verbs that captured no words never open the words file. Two FileHandle reads
+(`DyldSharedCacheChunkSet.read`, the re-attest page loop) now drain their
+autoreleased buffers per read: without that, the remaining 9.3 GB peak was
+3.3 GB of write-phase reads plus 3.4 GB of re-attest reads, all kept alive
+until the process exited.
+
+A guest installed by 2.15.0 or earlier still holds the page runs. `cfw
+install` and `update-environment` run `cfw patch-dsc-undo-words` first,
+which keeps from each X1 run only the words that differ from the cache now.
+On the 2.15.0 log above that took 331 s with an 8.05 GB peak once (it still
+has to decode the 4.4 GB JSON), and a second run is a 0.13 s no-op. It keeps
+24,834,435 words: the 24,834,397 lowered instructions, the corecrypto HMAC
+record (8 words), and 30 words of `iomfb_force_kern` that fall inside X1 page
+runs. Reverting only the X1 patches while that one stays puts those 30 words
+back to stock, exactly as reverting the page runs did.
+
+Checks on the 24A94425 cache: the new CLI's bootstrap + whole-cache +
+force-kern output is byte-identical to 2.15.0's in all 80 chunks; reverting
+those three from words gives back the stock cryptex's 80 chunks
+byte for byte, signatures included, and so does reverting them from the
+converted 2.15.0 log. `DyldSharedCacheUndoWordsTests` covers the merge
+rule, the file format and its damage checks, page-grouped restore over a
+synthetic cache, refusal of an unmapped word, and the conversion.
+
 ### VirtualAudio on 27.1
 
 The four VirtualAudio CFW patches failed on 24A94425 because every function
@@ -4838,6 +4887,36 @@ Window captures (ScreenCaptureKit) cannot judge 120 Hz here: the cover, which
 is natively 120, measures the same 40-55 changes per second as the inner
 display, because the host composites the window at its own rate. Use guest
 display links, or the host's `lastSubmittedTime` poller from the vGPU notes.
+### Expanded Now Playing corners (local diagnostic, 2026-10-29)
+
+On iPhone-Duo (27.1 24A94425), the unfolded expanded Now Playing panel
+provided by Broadcasts has a rectangular outer black background while its
+artwork remains rounded. A read-only UIKit probe reports 59 points for the
+cover's `_displayCornerRadius` and `_displayCornerRadiusIgnoringZoom`.
+Constructing a private, unregistered UIScreen from the inner CADisplay's
+FBSDisplayConfiguration reports zero for both getters and `_isEmbeddedScreen`
+false. This daemon-side object does not include SpringBoard's display adapter,
+so it establishes the native virtual-display default, not the exact live
+SpringBoard screen state.
+
+A local FoldDisplayAdapter experiment intercepts those two getter selectors
+(ABI checked as d16@0:8), matches only the recorded inner display identity,
+and substitutes the main screen's original native value only when the inner
+value is zero. A nonzero native inner value and every other display pass
+through. Limited logging records native/main/effective values in SpringBoard.
+No device-tree, MobileGestalt, firmware or host security setting is changed.
+The original source is saved outside the source tree as
+`.vphone-setup/FoldDisplayAdapter.before-corners.m`; previous environment
+bundle 2.14.0-local.e1ece920 remains available for rollback.
+Validation and visual outcome are recorded below after deployment.
+
+**Validated:** Release VPhone build passed without warnings/errors. Installed
+local bundle `2.14.0-local.232df3b7`, updated the existing guest environment,
+and cleanly restarted (vphoned connected in four seconds). Actual SpringBoard
+logs now confirm `_displayCornerRadius native=0.00 main=59.00 effective=59.00`
+for the inner screen, so the earlier daemon probe matches the live symptom.
+The user reproduced the Broadcasts panel and confirmed “that's fixed now.”
+Previous bundle retained for rollback; no additional change is pending.
 
 ## 2026-10-29 night: folds go through SpringBoard's display tool service
 
@@ -5159,3 +5238,461 @@ application started while the device is closed lists only the cover's
 run: WebDriverAgent itself, and #784's secondary points (`hingeAngle` POST,
 and the empty `Wireless` displays, type 2 at 0×0, that WDA lists at
 1408×2048 @2).
+
+## 2026-11-02: the inner display's type, and XCTest's screenshot of it
+
+After #788, WebDriverAgent's screenshot of the inner display (display 7,
+`currentDisplayId=7`) still came back 2006×2852 portrait with the landscape
+Home Screen upright in the top 2006 pixels and the rest black (PR #788
+comment, WDA 16.17.6). The cover's screenshot was right.
+
+What Apple's devices return for the same XCTest request (`XCUIScreen
+screenshot` → testmanagerd's `ScreenshotProvider`, a small UI test that
+captures every `XCUIScreen` with 2007×2853 pixel bounds):
+
+| inner display, landscape | stored pixels | `UIImage.imageOrientation` (EXIF) |
+| --- | --- | --- |
+| real iPhone Duo, iOS 27.2 24B91020, held landscape | 2006×2852 portrait, UI turned, fills it | 3 (6) |
+| Xcode 27.2 iPhone Duo simulator, open | 2006×2852 portrait, UI turned, fills it | 3 (6) |
+| this guest (sbdisplay-duo), before | **2852×2006 landscape**, UI turned in the left 2006 columns, rest black | 3 (6) |
+
+WDA applies the tag, so hardware gives 2852×2006 and the guest gave
+isaac's cropped portrait image. The odd-to-even size is testmanagerd's own
+(its buffer callback rounds 2007×2853 down). On the real Duo, display 2 is
+the inner panel; set from XCTest, `XCUIDevice.orientation` never turns the
+inner panel (it stays portrait-shaped face up), so only a phone held
+landscape shows the case.
+
+How testmanagerd renders a screen (Xcode 27.2 DDI, iOS 27.1 UIKit):
+
+- `ScreenshotProvider` calls `_UIRenderDisplay` with `src-screen` =
+  `+[UIScreen _screenWithIntegerDisplayID:]`, `dst-scale` = its `scale`,
+  `src-rect` = its `bounds`, no `src-orientation`. The destination is
+  `src-rect` × scale; `_UISnapshotContainerTransform` turns only by the
+  angle between `src-orientation` (1 when absent) and portrait, so it is the
+  identity here, and the render is `CARenderServerSnapshot` of the display
+  with a 3× scale.
+- The tag is `-[XCAXManager_iOS systemUIOrientation]`: AX attribute 1503 of
+  the system app (attribute 1001 of the system-wide element), 3 → EXIF 8,
+  4 → 6, anything else 1. It was right on the guest.
+- `CARenderServerSnapshot` of the inner display from SpringBoard with those
+  options gave the hardware picture on the guest too, so the render path was
+  fine; the difference was the screen's bounds.
+
+Inside testmanagerd on the guest (lldb during a held XCTest session),
+`_screenWithIntegerDisplayID:7` had bounds and `_referenceBounds` 951×669,
+and its configuration `Unknown[7-1]; mode: "951x669@3x 120Hz"` with
+`FBSDisplayMode 951x669@3x (2007x2853/3r270)`. SpringBoard's configuration
+of the same display has no rotation (the simulator's never rotates). The
+rotation comes from FrontBoardServices (27.1):
+
+- `-[FBSDisplayConfiguration _initWithImmutableDisplay:originalDisplay:
+  isMainDisplay:assertIfInvalid:]` sets the mode's rotation to
+  `FBSDisplayRotationFromCADisplayRotation(nativeOrientation)`, and when the
+  identity is not `isAlwaysConnected`, minus that of `currentOrientation`
+  (mod 4). The inner display is native rot0 and current rot90 in landscape,
+  so a not-always-connected identity gets r270 and landscape bounds.
+- `_FBSCADisplayToDisplayTypes` derives always-connected from
+  `-[CADisplay displayType]`: 0 → always connected, UIKit-main-like,
+  connection 0; 1 → always connected only if main; 2 and 3 → not always
+  connected, connection type 2 or 3; 4 → always connected, connection 0. The
+  identity type comes from the tag (65536 → 7, `Unknown`).
+
+The guest's inner display is a `CAWindowServerVirtualDisplay`, so every
+client reads `displayType` 3; the simulator's and the real Duo's inner
+panel is type 0. SpringBoard was right only because its adapter answers 0
+(4 while FrontBoard classifies the display). testmanagerd builds its own
+configuration from `CADisplay`, and so did vphoned's `display.modes`, which
+reported type 3 (#784).
+
+Where the type lives (iOS 27.1 QuartzCore, 24A94425):
+
+- `-[CAWindowServerVirtualDisplay initWithOptions:]` sets bits 10–12 of the
+  C++ display's halfword at +0x2c0 to 3 (`and #0xffffefff; orr #0xc00`),
+  unconditionally; no `kCAVirtualDisplay*` option sets a type.
+- `-[CAWindowServerDisplay displayType]` is `ldr x8, [x0, #8]` (`_impl`);
+  `cbz`; `ldr x8, [x8, #0x40]` (server); `ldr x8, [x8, #0x60]` (display);
+  `ldrh w8, [x8, #0x2c0]`; `ubfx w8, w8, #10, #3`.
+- `Display::build_display_info_data` copies the raw bits to the info's
+  +0x358; `Display::publish_display_info_state` copies the info into the
+  display's shared memory (+0x360, a sequence counter then the data) that
+  clients map. It runs from `post_display_changed`, `set_all_modes`,
+  `set_display_properties` and `set_clone_master`, all inside QuartzCore,
+  so the published copy cannot be corrected after each publish.
+- The server itself reads the field: `Server`'s constructor (callbacks for
+  type 0 or not), `Display::allocate_surface` (surface flags for type 0),
+  `Renderer::render` and `MetalContext::begin_rendering` (type-0 branches),
+  `VirtualServer::copy_display_timings` (of a source server that is not
+  virtual), `render_for_time` and `supports_throttle` (type 1), and
+  `update_clones` (type 2).
+
+So backboardd clears the field once the render server runs, just before it
+sends the inner display's point scale (`vpMarkInnerDisplayBuiltIn`); that
+`setDisplayProperties:` publishes the type with the scale. The Server was
+built for type 3 and stays so. The offsets and the bit range are read from
+`-[CAWindowServerDisplay displayType]`'s instructions, the field is cleared
+with a compare-and-swap (other flags share the halfword), and the getter
+must answer 3 before and answers 0 after; if the getter's shape differs,
+the display stays virtual. A running client keeps the type it read, as
+with the scale.
+
+Tried live first, on sbdisplay-duo over lldb in backboardd (field 0xd01 →
+0x101, then a point-scale publish): the panel kept drawing, a fresh
+testmanagerd captured the inner display as 2006×2852 portrait with the UI
+turned and filling it, tagged EXIF 6, as on hardware, and the running
+vphoned still said type 3.
+
+Measured on sbdisplay-duo (iPhone19,4, iOS 27.1) with the new bundle,
+after `vm set-bundle --update-environment` and a cold boot: backboardd logs
+`inner display: type 0 (display +0x2c0 bits 10-12)` just before `point
+scale 3 sent`; vphoned's `display.modes` gives the inner display
+`displayType` 0 and `pointScale` 3, mode 2007×2853 at 120 Hz; the inner
+pages context is published as before. XCTest's capture of display 7 open
+and landscape is 2006×2852 portrait with the UI turned and filling it,
+`imageOrientation` 3 (EXIF 6), and with the inner panel portrait-shaped
+(`display.rotation` 0) 2006×2852 upright, `imageOrientation` 0: both as the
+real Duo. Taps open apps on the inner panel and on the cover after a close,
+and SpringBoard and backboardd kept their boot pids with no new crash
+report.
+
+WebDriverAgent 16.17.7 (appium-ios, the same native code as 16.17.6) on the
+same guest: `/wda/screens` lists display 7 (2007×2853 @3) and display 1
+(1398×2034 @3), both `traits` 1 (the inner display was 0 before), and
+`isMain` is the lit panel; `/wda/screen` for display 7 is 951×669 @3. Its
+screenshot with `currentDisplayId` 7, open and landscape, is 2852×2006 with
+the whole UI; forcing `screenshotOrientation` keeps that canvas (WDA sizes
+the canvas from the image's own orientation and only redraws). Closed,
+display 1 is 1398×2034 (the cover's Home Screen is portrait-only).
+
+With two integrated displays, testmanagerd now follows the active one, as
+on the real Duo: when `hasMultipleIntegratedDisplays`, it watches the
+default main display's `FBSDisplayLayoutMonitor` and takes the layout's
+display `hardwareIdentifier` as active, and a capture of the other display
+fails with "Cannot screenshot inactive display" (XCTDaemon
+ScreenshotProvider error 9). The real Duo refuses the dark cover the same
+way. Before, with one integrated display, the guest captured both panels
+in either posture.
+
+A process running across a backboardd restart keeps the displays it read,
+and the restarted backboardd creates the inner display under a new unique
+id: vphoned, dtdeviceinfod and a running testmanagerd still named the old
+id, so testmanagerd held the cover active while open and refused the inner
+display. Restarting testmanagerd (and dtdeviceinfod) cleared it; after the
+backboardd restart itself, backboardd logged `type 0` again and a fresh
+vphoned read type 0. A SpringBoard restart changes nothing here.
+
+Also measured: DeviceHub streams the inner display; `devicectl device info
+displays` lists both as `integrated`, the inner one `active` while open,
+and `devicectl device capture screenshot` of it gives the 2007×2853 native
+buffer (dtscreencaptured rotates by current and native orientation, not by
+type); backboardd idles at 1.5% of a core on a still Settings screen;
+Settings' inner `UIScreen` is 951×669 @3, 120 fps, mode `669x951@3x
+(2007x2853/3)`, as before.
+
+Not changed: WDA's `POST /wda/device/hingeAngle` still returns null with
+the angle unchanged. WDA builds DeviceHub's hinge-slider payload (vendor
+page 0xFF61, usage 0x5B, provider `com.apple.Virtualization.VirtualMachines`)
+and dispatches it from its runner with `IOHIDEventSystemClientDispatchEvent`;
+the guest's hinge relay follows the events DeviceHub's controls arrive in,
+from dtuhidd's HID service, and nothing takes a client-dispatched one. Its
+GET reads CMAngleManager and reports the guest's hinge (180 open). Taken
+since; see "2026-11-02: WebDriverAgent's hinge POST".
+
+## 2026-11-02: WebDriverAgent's hinge POST
+
+WDA's `POST /wda/device/hingeAngle` (appium-ios 16.17.x,
+`XCUIDevice+FBHinge.m`) builds DeviceHub's slider dictionary
+`{provider: com.apple.Virtualization.VirtualMachines, source:
+hinge-slider-control, type: range, value: <angle>}`, IOKit
+binary-serializes it, wraps it in `IOHIDEventCreateVendorDefinedEvent`
+(page `0xFF61`, usage `0x5B`) and sends it from the runner with
+`IOHIDEventSystemClientCreate` + `IOHIDEventSystemClientDispatchEvent`.
+The dispatch returns nothing, so the endpoint answers WDA's success
+(`FBResponseWithOK`, `value: null`) whatever happened; `null` is success
+here, and a refused argument comes back as an error object.
+
+**Where it went.** backboardd's HID server refused it, every time:
+
+    Error: the client with pid 1211 is missing the
+    'com.apple.private.hid.client.event-dispatch' entitlement.
+
+The MIG stub `_Xio_hideventsystem_dispatch_event` calls
+`_io_hideventsystem_dispatch_event(port, data, length)` (IOKit, exported).
+That function turns the out-of-line buffer into a CFData
+(`_IOHIDUnserializeAndVMDeallocWithTypeID`, freeing the buffer), finds the
+connection, and for any connection type but 0 requires bit 3 of
+`IOHIDEventSystemConnectionGetEntitlements` before
+`IOHIDEventCreateWithDataInternal` and `_IOHIDEventSystemDispatchEvent`.
+WDA's connection is "Rate Controlled" with entitlements `0x0`. Even
+dispatched, the event would have had no service, and locationd's relay
+reads the host controls from services matching `0xFF61/0x5B`. A runner
+signed by a developer team cannot carry a private entitlement.
+
+**The buffer's formats** (iOS 27.1 IOKit, 24A94425), all needed to read it:
+
+- the buffer is a CFData in a **binary property list**
+  (`_IOHIDCreateBinaryData`: `CFPropertyListWrite`, format 200), not an
+  IOKit serialization; `IOCFUnserializeBinary` returns nil on it;
+- the CFData is the event in `IOHIDEventCreateDataInternal`'s form, read by
+  `IOHIDEventCreateWithDataInternal`; the public pair passes format flag 1,
+  the internal one 0;
+- the vendor payload inside is IOKit binary (WDA serializes with option 1,
+  as dtuhidd's DeviceHub events are), read with `IOCFUnserializeBinary`.
+
+**What changed.** `libvphonehinge` (backboardd, iPhone19,4 only) detours
+`_io_hideventsystem_dispatch_event` from its constructor, before backboardd
+serves clients. The detour decodes the buffer; an event that is a
+host-control vendor event whose dictionary names the VM provider,
+`hinge-slider-control`, `range` and a value of 0–180 is the hinge's: the
+detour frees the buffer as the server would, answers `KERN_SUCCESS`, and
+the hinge dispatches the event unchanged on its own `0xFF61/0x5B` virtual
+service from its queue. The server never sees it, so it neither refuses nor
+logs the missing entitlement. Anything else, including the orientation
+picker, goes to the server unchanged. From the hinge's service the event takes DeviceHub's path:
+locationd's relay moves the hinge, and vphoned's unmatched monitor sees the
+provider and follows it as a DeviceHub value (`vp_hinge_note`: stored
+quietly, the screen lit when opening from closed). The hinge status
+(`VPhoneHingeStatus`) gains `client_dispatch` (`installed` or why not) and
+`client_controls` (values taken).
+
+Ways not taken:
+
+- Granting the entitlement bit to unentitled connections would let any app
+  dispatch any event (touches, buttons).
+- Swapping the routine in `_iohideventsystem_subsystem` (found by the stub
+  whose `BL` targets the exported function; `blraaz`, so a plain function
+  pointer fits): the table is in the cache's `__AUTH_CONST`, and
+  `vm_protect(VM_PROT_COPY | READ | WRITE)` there returns
+  `KERN_PROTECTION_FAILURE`. Text pages take the copy, as libmisfix's
+  detour measured.
+- libmisfix's detour (`MISFix/MISFixDetour.c`, now built into the hinge too)
+  relocates the target's first four instructions. In an X1 cache the
+  prologue is `pacibsppc`, which signs LR with its own address; moved, it
+  signs for the trampoline and the function's `retabsppc` fails. The guest
+  runs the X1-lowered cache on hosts without PAuth_LR (this M5 Pro has
+  none), where the prologue is `pacibsp`. The detour now refuses
+  `PACIASPPC`, `PACIBSPPC`, `PACNBIASPPC` and `PACNBIBSPPC` instead of
+  copying them, so on an unlowered cache the hinge reports `HID server
+  dispatch not detoured: a displaced instruction is PC-relative` and WDA's
+  POST stays a no-op.
+
+**Measured** on sbdisplay-duo (iPhone19,4, iOS 27.1 24A94425, product-id
+patch on), the hinge library pushed with `environment.install` and
+backboardd restarted, WDA 16.17.x from appium-ios:
+
+| request | WDA GET | `display.orientation` `fold_angle` | `screen_off` |
+| --- | --- | --- | --- |
+| before the change, POST 120 | 180 | 180 | |
+| POST 120 | 120 | 120 | |
+| POST 0 | 0 | 0 | false |
+| POST 180 | 180 | 180 | false (lit on opening) |
+| POST 120, 12 s later (past the 5 s resend) | 120 | 120 | |
+
+vphoned stored each value quietly (`VPhoneHingeAngle` `quiet: true`, angle
+as posted) and `client_controls` counted one per POST. DeviceHub (restarted
+after the backboardd restart) still folds the guest from its own buttons:
+Closed 0, Open 180, Partially Open 130, with `client_controls` unchanged,
+since its values come through dtuhidd's virtual service, not a client
+dispatch. After DeviceHub's, WDA's POST 0 and 180 turned DeviceHub's model
+to the cover face and to the open inner panel. `display.pose` is the
+test-automation snapshot and is not current on a relay guest; its hinge
+field is not evidence here.
+
+With the server bypassed for these events, a POST leaves only the
+connection's `Connection added` and `Connection removed` lines in
+backboardd's log, with no entitlement error; POST 120, 0 and 180 and
+DeviceHub's Closed and Open were repeated with the same results. Checked
+off-guest in `make test-hinge`: WDA's payload in the internal form inside a
+binary plist is taken, and another usage page, no provider, the orientation
+picker and values of -1, 181, a Boolean or a string are not.
+
+## 2026-11-05: iOS 27.2, and WebDriverAgent's hinge GET after boot
+
+Issue #821: on an iPhone Duo guest running iOS 27.2 (24B91020), WDA's
+`GET /wda/device/hingeAngle` timed out (HTTP 500, 5 s each) for minutes
+after boot, and again after a WDA restart, while `VPhoneHingeStatus` kept
+dispatching. The first success returned 0° with the guest at 90°. On 27.1
+the first GET answered in 1.4 s.
+
+**What the GET does** (appium-webdriveragent 16.17.7,
+`XCUIDevice+FBHinge.m`): a new `CMAngleManager`,
+`startAngleUpdatesToQueue:handler:`, and a 5 s wait for the first callback
+with `isAngleValid`. A new manager is handed the current angle when
+CoreMotion has one; otherwise it waits for the next change. The probe used
+here (`HingeProbe`, an ldid-signed app installed with `apps.install`)
+repeats exactly that every 3 s and logs each read.
+
+**Reproduced** on a new test VM (`duo272-hinge`, iPhone19,4 27.2, cloudOS
+26.4 23E5207q, bundle 2.15.2 from upstream main), six cold boots with the
+hinge stationary at 0° and at 100°, alternating:
+
+| boot | hinge | fresh read ~60 s after boot | after a 1° move |
+| --- | --- | --- | --- |
+| 1–6 | 0, 100, 0, 100, 0, 100 | timeout (callbacks 0), every boot | valid at once (0.001 s) |
+
+Restarting locationd (`processes.kill … "signal":"KILL"`, launchd starts
+another) also made fresh reads valid within the next read, at 0° and at
+100°, and they stayed valid for minutes with the hinge still. What fails
+is the locationd that starts with the guest.
+
+**The 27.2 relay change.** locationd's `CMDeviceStateRelayManager` (the
+relay that turns the host controls, page `0xFF61` usage `0x5B`, into
+CoreMotion's hinge-angle service "Crane", `0xFF0C/0x21`) gained an angle
+interpolator in 27.2 (`CMAngleInterpolator`,
+`DeviceStateRelayInterpolationDuration`, `_snapToAngleUpdate:`,
+`startUpdatesForPhysicalDevice:aopAngle:`). Its `_feedAngleUpdate:` now
+returns early when the value equals `effectiveAngle` ("Already at angle;
+skipping interpolation"); 27.1's sets the angle and dispatches every time.
+libvphonehinge resends the stationary angle every 5 s because the relay
+never asks for one; on 27.2 that resend is a no-op, so whatever state the
+boot left the relay's service in stays until the angle changes.
+
+The Crane service does hold an event on a failing boot
+(`IOHIDServiceClientCopyEvent(…, kIOHIDEventTypeHingeAngle)` from root:
+phase Ended, timestamp a few seconds after boot, SenderID equal to the
+service's registry ID), with the same shape as the event it holds once
+reads work (where it is the move's last sample). A new client's copy is
+rejected anyway; why it is not used was not established. After a move or
+a locationd restart the copied event is used.
+
+**Startup deadlock, the reporter's 90° case.** On one boot the hinge did
+not recover from a move either. A spindump of that locationd showed its
+`AriHost` queue blocked since 6 s after launch inside a location silo →
+libICEClient → libARI `dispatch_sync`, and two `root.default-qos` threads
+waiting on its turnstile: the iOS 27 startup deadlock
+(`Research/Guest/locationd_startup_deadlock.md`) in the baseband client,
+where `locationServicesEnabled` still answers, so vphoned's watchdog did
+not see it. A restart recovered that one too. Its first reading after the
+restart is the relay's reseeded 0°, the value the reporter saw.
+
+**A health check from vphoned does not work.** The first fix had vphoned
+make the GET's own read (a new `CMAngleManager`, 5 s) and restart locationd
+when it got nothing. A daemon's manager is not handed the current angle
+even when an app's is: from root it timed out twice and then caught a live
+event, with the app's reads valid at the same time. vphoned kept restarting
+healthy locationds (12 in 13 minutes). A `copyEvent` of the Crane service
+cannot tell the states apart either (above).
+
+**First fix, since replaced** (see the next section: it served only a
+client already reading when the restart came). vphoned's locationd watchdog
+(`GuestLocationdWatchdog.swift`) restarted the locationd that started with
+the guest once, on iOS 27.2 or later with CoreMotion's foldable hinge
+(`vp_core_motion_hinge`), about 30 s after boot. "Started with the guest"
+was a start within 30 s of boot on the uptime clock
+(`ri_proc_start_abstime` from `proc_pid_rusage`), because vphoned moves the
+guest's wall clock to the Mac's after boot and `p_starttime` is wall time.
+
+**Measured with that fix**, duo272-hinge, six more cold boots alternating
+0° and 100°, the probe started at about +20 s and kept in front:
+
+| boot | hinge | first valid fresh read | timeouts before it | valid reads to +120 s | launchd `runs` |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0 | +35 s (0°) | 2 | 30 | 2 |
+| 2 | 100 | +35 s (0°, then 94.87°) | 2 | 31 | 2 |
+| 3 | 0 | +35 s (0°) | 2 | 30 | 2 |
+| 4 | 100 | +37 s (0°, then 96.89°) | 2 | 30 | 2 |
+| 5 | 0 | +35 s (0°) | 2 | 30 | 2 |
+| 6 | 100 | +36 s (0°, then 94.87°) | 2 | 30 | 2 |
+
+One restart per boot and no other; every read after the restart was
+valid. The first read after it is the relay's reseeded 0°, and the next
+resend of the virtual hinge moves it to the stationary angle. That probe
+was already running when the restart came, which is why it was served; a
+client started later was not (next section).
+
+Not addressed: a read after the hinge moved can return an intermediate
+angle (100° read as 94.87–96.89°, 101° as 97.88°). The reporter sees the
+same on the Xcode 27.2 Duo simulator, so it is CoreMotion's.
+
+**The rest of the Duo on 27.2**, same VM: restore (with the iBEC wait
+below), CFW and first boot; `display.posture` closed / book / open five
+times, with `fold_angle` 0 / 100 / 180 and the panel switching between the
+cover's portrait and the inner display's landscape split view (Settings);
+WDA's hinge POST from an unentitled app (`FeatProbe`, the same vendor event)
+moving `fold_angle` to 120, 0 and 180; touch (`input.tap` dismissing the
+pairing alert and opening Settings › General › About, which reads iOS 27.2,
+iPhone Duo); Safari drawing on the open inner display; `audio.state`; and
+the CIBarcode filters (QR generate, render and detect, Code128, Aztec,
+PDF417) without `system-cibarcode-cfw-arm64e_x1`, which stays scoped to
+27.1. DeviceHub was not tried.
+
+Restoring this VM from Launchpad failed four times in a row at "Device did
+not reconnect in recovery mode" (idevicerestore's 10 s wait after iBEC),
+iBEC reaching recovery only after the wait had ended. Under a host load
+average of 100–290 from other work, iBoot's serial lines came 0.3–0.6 s
+apart; the fourth attempt, at a load of about 5, failed the same way, so
+load is not the whole cause, and it was not found. A restore run by hand
+(`vphone-cli vm launch --dfu`, 25 s, then `vphone-cli restore`) at that load
+went through, iBEC in recovery within 2 s, and Launchpad's `vm create --from
+installCFW` finished from there.
+
+## 2026-11-05: a hinge client started later, and VirtualAudio on 27.2
+
+The reporter of #821 tested the fix above and found it served only a client
+already reading when the restart came. With the guest stable for 130 s and
+WDA started at +167 s, every GET timed out, while `display.orientation` read
+`fold_angle` 180; a WDA restart on a warm guest failed the same way. The
+probe above had been started at +20 s and kept running.
+
+**Reproduced** on a recreated `duo272-hinge` (same IPSWs, bundle from upstream
+main with the restart): one cold boot at 0°, nothing reading until +170 s,
+then five new probe processes 12 s apart. All five timed out with no
+callback; launchd `runs` was 2, so the restart had happened at about +30 s.
+
+**Why.** On a VM, CoreMotion's angle notifier skips the physical hinge
+device ("Skipping open for physical HID device on VM/Simulator") and has
+nothing to copy an angle from, so a new `CMAngleManager` gets the angle only
+from the next hinge-angle event the relay dispatches. 27.1's relay
+dispatched one for every value, so libvphonehinge's stationary resend served
+a new client within the resend period. 27.2's
+`-[CMDeviceStateRelayManager _feedAngleUpdate:]` compares the value
+(`isEqual:`, an NSNumber) with `effectiveAngle` (`numberWithFloat:` of the
+interpolator's last output) and skips an equal one. The slider value
+arrives through `IOCFUnserializeWithSize`, which has no reals, so a value
+can only be a whole degree and a resend is always equal. The relay snaps
+(`_snapToAngleUpdate:`, `interpolateToAngle:duration:0`) only once, at its
+start. A restart therefore helps exactly one client: the one that is
+subscribed when the reseeded 0° moves back to the real angle.
+
+**Fix.** libvphonehinge also loads in locationd (SystemHook,
+`/usr/libexec/locationd`), where on iPhone19,4 it replaces `_feedAngleUpdate:`
+when the relay has 27.2's `effectiveAngle` and `interpolator`
+(`Hinge/VPhoneHingeRelayResend.h`): a value equal to `effectiveAngle` goes to
+the interpolator with no duration, which produces one event at that angle,
+on the interpolator's own queue (`_snapToAngleUpdate:` itself asserts the
+relay's other queue and cannot be called from the feed). Any other value
+takes the relay's path. The stationary resend drops from 5 s to 2 s: at 5 s
+the first read of a new client took 0.26–4.97 s, against WDA's 5 s limit.
+vphoned's one-time restart is removed; the watchdog is as before #826.
+
+**Measured**, cold boots, nothing reading until +170 s, then five new probe
+processes per boot:
+
+| build | boots (hinge) | valid first reads | first read took |
+| --- | --- | --- | --- |
+| upstream main (restart) | 1 (0°) | 0 of 5 | timeout |
+| hook, 5 s resend | 3 (0°, 100°, 180°) | 15 of 15 | 0.26–4.97 s |
+| hook, 5 s resend, probe from +18 s | 1 (0°) | 5 of 5, and the early probe from its first read at +22 s | 1.07–4.46 s |
+| hook, 2 s resend | 2 (0°, 100°) | 10 of 10 | 0.001–1.63 s |
+
+The first boot of the 5 s round also hit the iOS 27 startup deadlock twice
+(`locationd … did not answer, killed it`); the watchdog restarted it and the
+hinge was served throughout. Idle, with the panel lit, locationd used 0.09 s
+of CPU a minute.
+
+**VirtualAudio was off on 27.2.** The "rest of the Duo" check above missed it:
+both creates of this VM logged `Patch site not found: virtualaudio: expected
+exactly 1 mute-set throw in the wrapper at 0x103ce0, found 0`, and the five
+VirtualAudio patches, which share one staged copy, were all left off.
+`audio.state` answers either way. 27.2's set wrapper throws a
+`std::system_error` built by a constructor call where 27.1 stored a
+CAException's fields; the mute-set patch now takes both
+(`Research/Guest/virtualaudio_speaker_route_throws.md`). With the five
+applied, Safari played an MP3 stream for 29 s through the virtio sound
+plugin (1 280 064 frames in, 0 bytes dropped, 7 starved writes on a loaded
+host). "Campo absent; entitlement patch skipped" in the same log is
+expected: 27.2 has no `Campo.app`, and PosterBoard and its extensions draw
+the wallpaper.
+
+This time Launchpad's `vm create` restored the VM without the iBEC
+failure, at a host load average of about 20.

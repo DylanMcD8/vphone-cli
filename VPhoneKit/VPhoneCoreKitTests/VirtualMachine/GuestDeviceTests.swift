@@ -6,6 +6,38 @@ import Testing
 /// VM's `config.plist` keeps it.
 @Suite("Guest device")
 struct GuestDeviceTests {
+    @Test func `Vision Pro keeps its board identity and uses native visionOS resources`() {
+        let device = VPhoneGuestDevice.realityDevice14_1
+        #expect(VPhoneGuestDevice.detect(buildManifest: ["SupportedProductTypes": ["RealityDevice14,1"]]) == device)
+        #expect(device.deviceClass == "n301ap")
+        #expect(device.presentsBoard)
+        #expect(device.family.osName == "visionOS")
+        #expect(device.dyldSharedCacheDirectory == "System/Library/Caches/com.apple.dyld")
+        #expect(VPhoneResources.vphonedName(for: device.family) == "vphoned-visionos")
+        #expect(device.restoreTreeName(version: "26.4", build: "23O247") == "iPhoneOS_RealityDevice14,1_26.4_23O247_Restore")
+    }
+
+    @Test func `local iOS 16 device preserves iPhone 14 Pro board and screen`() throws {
+        let device = try #require(VPhoneGuestDevice.named("iPhone15,2"))
+        #expect(device.deviceClass == "d73ap")
+        #expect(device.screen.width == 1179 && device.screen.height == 2556)
+        #expect(device.screen.scale == 3)
+        #expect(VPhoneGuestDevice.detect(buildManifest: ["SupportedProductTypes": ["iPhone15,2"]]) == device)
+        #expect(VPhoneGuestDevice.default == .iPhone17_3)
+    }
+
+    @Test func `experimental iPhone 15 keeps its board and display through manifest encoding`() throws {
+        let device = try #require(VPhoneGuestDevice.named("iPhone15,4"))
+        #expect(device.deviceClass == "d37ap")
+        #expect(device.screen.width == 1179 && device.screen.height == 2556)
+        #expect(device.screen.scale == 3)
+        #expect(VPhoneGuestDevice.detect(buildManifest: ["SupportedProductTypes": ["iPhone15,4"]]) == device)
+        let manifest = VPhoneVirtualMachineManifest.newVM().updating(guestDevice: device)
+        let decoded = try PropertyListDecoder().decode(VPhoneVirtualMachineManifest.self, from: PropertyListEncoder().encode(manifest))
+        #expect(decoded.guestDevice == device)
+        #expect(VPhoneGuestDevice.default == .iPhone17_3)
+    }
+
     @Test(arguments: ["HomeAccessory17,1", "HomeAccessory17,2"])
     func `HomeView keeps distinct board identities and the tvOS executable platform`(type: String) throws {
         let device = try #require(VPhoneGuestDevice.named(type))
@@ -156,10 +188,10 @@ struct GuestDeviceTests {
     }
 
     @Test
-    func `an iPhone17,3 guest writes no product, so older bundles read it unchanged`() {
+    func `an iPhone17,3 guest records its screen without writing the product`() {
         let manifest = VPhoneVirtualMachineManifest.newVM().updating(guestDevice: .iPhone17_3)
         #expect(manifest.guestProductType == nil)
-        #expect(manifest.screenConfig == .default)
+        #expect(manifest.screenConfig == .init(width: 1179, height: 2556, pixelsPerInch: 460, scale: 3.0))
     }
 
     @Test

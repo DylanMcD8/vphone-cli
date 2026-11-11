@@ -3,6 +3,19 @@ import VphonedNative
 
 // MARK: - Clock
 
+enum ClockMethod: String, GuestMethod {
+    case timeClock = "time.clock"
+
+    var spec: MethodSpec {
+        switch self {
+        case .timeClock: MethodSpec(.optional("time", .number, "Time in seconds since 1970, after 2001 and no later than 2100; use manual to override automatic sync"), .optional("manual", .boolean, "Disable automatic time and set a ticking manual clock; requires time and forbids automatic true", default: false), .optional("automatic", .boolean, "Turn the guest automatic time setting on or off; applied before time"), summary: "Read the guest clock, sync it to the Mac time, or switch automatic time on or off.", result: [.required("automatic", .any),
+                                             .optional("changed", .boolean),
+                                             .optional("offset", .number),
+                                             .required("time", .number)])
+        }
+    }
+}
+
 /// The guest's wall clock, kept on the Mac's.
 ///
 /// A guest boots with the Mac's time, from the virtual RTC. Once timed has
@@ -40,8 +53,7 @@ extension GuestAPI {
     private static let clockOffers = 6
     private static let clockLock = NSLock()
 
-    static func executeClock(_ method: String, _ params: [String: Any]) throws -> [String: Any]? {
-        guard method == "time.clock" else { return nil }
+    static func executeClock(_ method: ClockMethod, _ params: [String: Any]) throws -> [String: Any] {
         let received = DispatchTime.now()
         let automatic = params["automatic"] as? Bool
         let manual = params["manual"] as? Bool == true

@@ -39,6 +39,9 @@ public final class CryptexFilesystemPatcher: BufferedPatcher {
     lazy var guestFamily = VPhoneGuestDevice.Family(rawValue: FirmwarePipeline.guestFamily(restoreDir: restoreDir)) ?? .iPhone
     var tmpDirectories: [URL] = []
     var attachedDevices: Set<String> = []
+    /// The CDHashes of each binary the merge signed again, mapped to the ones
+    /// it had in the IPSW, so it keeps Apple's constraint category.
+    var resignedCDHashes: [Data: [Data]] = [:]
 
     // MARK: - Init
 
@@ -69,10 +72,21 @@ public final class CryptexFilesystemPatcher: BufferedPatcher {
 
     // MARK: - Patcher
 
+    /// Whether this step has anything to do on the system being merged. A step
+    /// the gate allows but this image has no use for is left out of the records
+    /// rather than reported as applied.
+    func applies(_ identifier: String) -> Bool {
+        switch identifier {
+        case FirmwareRestoreImagePatchSet.surfaceCompression: isIOS18
+        case FirmwareRestoreImagePatchSet.watchAudio: guestFamily == .watch
+        default: true
+        }
+    }
+
     /// One record per step the gate lets through. The merge itself is the
     /// patcher: the pipeline builds it only when the merge is on.
     public func findAll() throws -> [PatchRecord] {
-        Self.steps.filter { gate.isEnabled($0.identifier) && ($0.identifier != FirmwareRestoreImagePatchSet.surfaceCompression || isIOS18) }.map { step in
+        Self.steps.filter { gate.isEnabled($0.identifier) && applies($0.identifier) }.map { step in
             PatchRecord(
                 patchID: step.identifier,
                 component: "",
@@ -92,6 +106,9 @@ public final class CryptexFilesystemPatcher: BufferedPatcher {
         (FirmwareRestoreImagePatchSet.vphoned, "Install vphoned and its launch daemon"),
         (FirmwareRestoreImagePatchSet.launchdCacheLoader, "Patch launchd_cache_loader"),
         (FirmwareRestoreImagePatchSet.virtualBluetooth, "Enable LE connections over the virtual Bluetooth controller"),
+        (FirmwareRestoreImagePatchSet.watchAudio, "Install the virtio sound HAL plugin for a watch"),
+        (FirmwareRestoreImagePatchSet.debugserver, "Re-sign debugserver so it can attach in the guest"),
+        (FirmwareRestoreImagePatchSet.launchdJetsam, "Patch launchd's jetsam panic guard"),
     ]
 
     @discardableResult
@@ -161,6 +178,10 @@ public final class CryptexFilesystemPatcher: BufferedPatcher {
         let targetImagePath = tmpDir.appending(path: "disk.dmg")
         do {
             try convertToRawImage(input: osDmgPath, output: targetImagePath)
+            // The decrypted OS image is only the conversion's input. Gone now,
+            // its ~7 GB are free for the merge, which on a nearly full disk
+            // otherwise runs out of room (iOS 18.6 22G86 with 24 GB free).
+            try? FileManager.default.removeItem(at: osDmgPath)
             let (targetDevice, targetMount) = try attachImage(path: targetImagePath, forceRW: true)
             defer { try? detachImage(deviceNode: targetDevice) }
 
@@ -203,6 +224,19 @@ public final class CryptexFilesystemPatcher: BufferedPatcher {
                 }
                 print("  [+] \(CustomFirmwareBluetoothVirtualController.feature) on")
             }
+            if gate.isEnabled(FirmwareRestoreImagePatchSet.watchAudio), applies(FirmwareRestoreImagePatchSet.watchAudio) {
+                print("- Adding the watch speaker…")
+                try addWatchAudio(targetMount: targetMount)
+                try patchWatchAudioBudget(targetMount: targetMount)
+            }
+            if gate.isEnabled(FirmwareRestoreImagePatchSet.debugserver) {
+                print("- Re-signing debugserver for in-guest attach…")
+                try patchDebugserver(targetMount: targetMount)
+            }
+            if gate.isEnabled(FirmwareRestoreImagePatchSet.launchdJetsam) {
+                print("- Patching launchd's jetsam panic guard…")
+                try patchLaunchdJetsam(targetMount: targetMount)
+            }
             try removeHostEventLog(mount: targetMount)
         }
 
@@ -213,6 +247,7 @@ public final class CryptexFilesystemPatcher: BufferedPatcher {
         print("- Finalizing merged image…")
         try shrinkImage(dmg: targetImagePath)
         try convertToUDRWImage(input: targetImagePath, output: newDmgPath)
+        try? FileManager.default.removeItem(at: targetImagePath)
         let metadata = try getAeaMetadata(restoreDir.appending(path: osPath))
         let key = try getAeaKey(restoreDir.appending(path: osPath), metadata: metadata)
         let finalFile = newDmgPath.appendingPathExtension("aea")
@@ -235,6 +270,8 @@ public final class CryptexFilesystemPatcher: BufferedPatcher {
         } else {
             try decryptAeaFile(restoreDir.appending(path: componentPath("Cryptex1,SystemOS")))
         }
+        // The System OS image is a decrypted copy; drop it once detached.
+        defer { if systemOS { try? FileManager.default.removeItem(at: osPath) } }
         let (osDevice, osMount) = try attachImage(path: osPath, readonly: true)
         defer { try? detachImage(deviceNode: osDevice) }
 

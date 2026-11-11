@@ -93,6 +93,17 @@
 		<string>Block</string>
 		<key>Patches</key>
 		<array>
+			<string>system-springboard-exp-ios17_desktop</string>
+			<string>system-launchd-exp-ios16_mach_ports</string>
+			<string>dyld-exp-ios16_mach_ports_lookup</string>
+			<string>system-backboard-exp-ios16_migration</string>
+			<string>system-keybag-exp-ios16_ephemeral</string>
+			<string>system-springboard-exp-ios16_desktop</string>
+			<string>system-systemhook-exp-ios16_surface</string>
+			<string>system-systemhook-exp-ios16_framebuffer</string>
+			<string>preboot-exp-ios16_ephemeral_storage</string>
+			<string>system-vphoned-exp-ios16_touchscreen</string>
+			<string>system-springboard-exp-ios16_keybagless_ui</string>
 			<string>system-userprofilesd-exp-keybag_lookup</string>
 			<string>system-breadboard-exp-mach_lookup</string>
 			<string>system-homeview-exp-setup_bypass</string>
@@ -112,6 +123,18 @@
 			<string>system-cryptexd-exp-homepod_staging</string>
 			<string>preboot-homepod-exp-cryptex_class</string>
 			<string>preboot-homepod-exp-audio_product</string>
+			<string>preboot-exp-visionos_virtual_product</string>
+			<string>system-featureflags-exp-visionos_legacy_uxm</string>
+			<string>system-launchd-exp-visionos_hmd_presentable_ipc</string>
+			<string>system-launchd-exp-visionos_hmd_properties_ipc</string>
+			<string>system-launchd-exp-visionos_hmd_system_setter_ipc</string>
+			<string>system-launchd-exp-visionos_uxm_ipc</string>
+			<string>system-launchd-exp-visionos_wakeboard_system_ipc</string>
+			<string>system-launchd-exp-visionos_environment_ipc</string>
+			<string>system-featureflags-exp-visionos_environments</string>
+			<string>system-wakeboard-exp-visionos_frame_pacing</string>
+			<string>system-launchdaemons-exp-visionos_nonfatal_services</string>
+			<string>system-preferences-exp-visionos_skip_buddy</string>
 		</array>
 	</dict>
 </dict>

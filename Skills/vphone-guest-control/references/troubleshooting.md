@@ -61,7 +61,7 @@ notes.
   attached `image` or take a screenshot. A locked or asleep screen swallows
   taps: run `guest unlock <name>`, or on an older vphoned press `power`, then
   `home`.
-- **Taps land in the wrong place:** the socket takes pixels (1290×2796); the
+- **Taps land in the wrong place:** the socket takes pixels (the screenshot size); the
   `input.*` RPCs take points. Use `ui.tree` / `ui.tap_element` instead.
 - **Port 22 refused over iproxy:** no sshd yet. Use RPC; see
   [guest-layout](guest-layout.md).
@@ -80,7 +80,7 @@ migration is hung, not that the display is broken.
    `files.read {"path":…, "binary":true, "limit":…}` and read its crash report.
    One known cause was a daemon crash-looping on a hypervisor-presence check.
 4. Read `Research/Patches/hv_vmm_present_usermode_xrefs.md` and
-   `Documents/Guides/troubleshooting.md`, then report. Do not recreate the
+   `Documents/en/help/troubleshooting.md`, then report. Do not recreate the
    machine to test a theory.
 
 ## Apps and the bootstrap
@@ -88,7 +88,7 @@ migration is hung, not that the display is broken.
 - **"Press home to continue" lock screen:** `guest unlock <name>`, or
   `{"t":"key","name":"home"}`.
 - **App crashes with `EXC_GUARD` / Mach port guard:** a known kernel-patch
-  scope limit on 26.x bases; see `Documents/Guides/troubleshooting.md`.
+  scope limit on 26.x bases; see `Documents/en/help/troubleshooting.md`.
 - **`dyld ... @loader_path/.jbroot/...` crash** after installing a package:
   a loader link is missing. vphoned re-links within about a second of a package
   operation; touch `Library/dpkg` or wait, then relaunch. See

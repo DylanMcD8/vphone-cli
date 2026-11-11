@@ -83,6 +83,11 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
     var noTemplate = false
     @Flag(help: "Do not boot the new VM to check that vphoned answers")
     var skipFirstBoot = false
+    @Option(help: ArgumentHelp(
+        "During the first boot, install the Irisin bootstrap in this layout, then owngoal-bootstrap-vphone through irisin-cli: roothide | rootless (deprecated; not on tvOS)",
+        valueName: "layout",
+    ))
+    var bootstrap: String?
     @OptionGroup(title: "Template slimming") var slimming: VPhoneTemplateSlimmingOptions
     @Flag(
         name: .customLong("keep-artifacts"),
@@ -114,6 +119,13 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
         selectedGuest?.usesTVOS == true
     }
 
+    /// Templates and their setup boot drive iOS Setup Assistant and its apps,
+    /// and wait for data migration, which a headless visionOS guest never
+    /// finishes. Launchpad builds these guests without a template too.
+    private var buildsWithoutTemplate: Bool {
+        usesTVOS || selectedGuest?.family == .vision
+    }
+
     /// A preset that customises the system before the restore (`minimal`): the
     /// offline trim and the setup boot of a template write the System volume,
     /// which would break that system's seal.
@@ -128,8 +140,8 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
 
     /// An Apple TV takes the TV preset; one whose userland comes from an OTA
     /// takes the arm64e one, with the GPU driver and the userland swap. An
-    /// Apple Watch takes the watch preset, an iPhone XS Max `minimal`: its iOS 18
-    /// research board kernel boots no other.
+    /// Apple Watch takes the watch preset, an iPhone XS Max `minimal`, the preset
+    /// checked on every iOS 18 release (`standard` is checked on 18.6).
     private var defaultPreset: String {
         switch selectedGuest {
         case let guest? where guest.family == .appleTV:
@@ -140,6 +152,8 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
             VPhonePatchPreset.homePodMiniIdentifier
         case let guest? where guest.family == .watch:
             VPhonePatchPreset.watchOSIdentifier
+        case let guest? where guest.family == .vision:
+            VPhonePatchPreset.visionOSIdentifier
         case let guest? where guest.notchedArtworkSubtype != nil:
             VPhonePatchPreset.minimalIdentifier
         default:
@@ -160,6 +174,17 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
         if iphoneSource != nil, iphoneVersion != nil || iphoneBuild != nil {
             throw ValidationError("Use either --iphone-source or --iphone-version/--iphone-build.")
         }
+        if let bootstrap {
+            guard bootstrap == "roothide" || bootstrap == "rootless" else {
+                throw ValidationError("--bootstrap takes roothide or rootless, not \(bootstrap).")
+            }
+            if skipFirstBoot {
+                throw ValidationError("--bootstrap installs during the first boot; --skip-first-boot leaves it out.")
+            }
+            if bootstrap == "rootless", usesTVOS {
+                throw ValidationError("Irisin serves only a roothide bootstrap on tvOS.")
+            }
+        }
         if template != nil, noTemplate {
             throw ValidationError("--template and --no-template exclude each other.")
         }
@@ -171,13 +196,12 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
            VPhoneGuestDevice.named(device)?.family != .homePod {
             throw ValidationError("--ota-source and --ota-key require an OTA userland device, such as --device AppleTV14,1 or AudioAccessory5,1.")
         }
-        if usesTVOS {
-            // Templates and their setup boot drive iOS Setup Assistant and its apps.
+        if buildsWithoutTemplate {
             if template != nil {
-                throw ValidationError("A tvOS or HomePod guest is built without a template; --template cannot be used.")
+                throw ValidationError("A tvOS, HomePod or visionOS guest is built without a template; --template cannot be used.")
             }
             if try !slimming.request.isEmpty {
-                throw ValidationError("A tvOS or HomePod guest is built without a template; the slimming switches do not apply.")
+                throw ValidationError("A tvOS, HomePod or visionOS guest is built without a template; the slimming switches do not apply.")
             }
         }
         if customisesRestoredSystem {
@@ -229,7 +253,7 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
         let (patchPreset, networkMode, unlocks) = try checkOptions()
         let templateUse: VPhoneVirtualMachineCreator.TemplateUse = if let template {
             .identifier(template)
-        } else if noTemplate || usesTVOS || customisesRestoredSystem {
+        } else if noTemplate || buildsWithoutTemplate || customisesRestoredSystem {
             .none
         } else {
             .automatic
@@ -308,6 +332,7 @@ struct VPhoneVirtualMachineCreateCommand: ParsableCommand {
                 slimming: slimming.request.isEmpty ? nil : slimming.resolve(),
             ),
             skipsFirstBoot: skipFirstBoot,
+            bootstrapLayout: bootstrap,
             slimming: slimming.resolve(),
         ))
     }

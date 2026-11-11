@@ -164,6 +164,7 @@ struct VPhoneVirtualMachineInfoCommand: ParsableCommand {
             print("net:   \(describeNetwork(report.network))")
             print("unlock: \(report.unlocksAtStartup ? "on" : "off")")
             print("location: \(report.syncsHostLocation ? "on" : "off")")
+            print("developer tunnel: \(report.holdsDeveloperTunnel ? "on" : "off")")
             print("rom:   \(VPhoneBootROMOption.describe(bundle))")
             print("seprom: \(VPhoneSEPROMOption.describe(bundle))")
             if let snapshots = try? VPhoneMachineSnapshots.list(of: bundle), !snapshots.isEmpty {
@@ -226,7 +227,7 @@ struct VPhoneVirtualMachineConfigCommand: ParsableCommand {
         Network settings are read when the VM starts, so a change applies from the next launch.
 
         --ip fixes the guest's address. In nat mode it must be on the Mac's shared NAT network \
-        (usually 192.168.64.0/24), and vphoned writes it into the guest. In tunnel mode, any \
+        (usually 192.168.65.0/24; 192.168.64.0/24 with --nat-peers off), and vphoned writes it into the guest. In tunnel mode, any \
         private subnet, handed out by the VM's own DHCP. In bridged mode vphoned writes it into \
         the guest, so give --gateway and --dns for the LAN.
 
@@ -239,7 +240,7 @@ struct VPhoneVirtualMachineConfigCommand: ParsableCommand {
 
         --mac-name (on by default) has the guest resolve this Mac's <LocalHostName>.local \
         at once, to the address the guest reaches the Mac at (nat: the shared network's host \
-        address, usually 192.168.64.1; tunnel: the gateway, which leads to the Mac's loopback; \
+        address, usually 192.168.65.1; tunnel: the gateway, which leads to the Mac's loopback; \
         bridged: the Mac's address on that interface), instead of racing mDNS answers. \
         --mac-name off withdraws it. Applied each time vphone-vm connects to the guest.
 
@@ -255,6 +256,11 @@ struct VPhoneVirtualMachineConfigCommand: ParsableCommand {
         runs, as a simulated location; macOS asks once for permission. The guest's own Location \
         Services switch is left alone: with it off, apps in the guest get no location. Applies \
         from the next start; in a VM window, Location > Sync Host Location changes it at once.
+
+        --developer-tunnel on has vphone-vm hold the guest's CoreDevice tunnel open while it runs, \
+        by running /usr/bin/devicectl against it, so Xcode and Instruments list the guest as \
+        online instead of offline. Applies from the next start; in a VM window, Diagnostics > \
+        Keep Developer Tunnel Open changes it at once.
 
         --rom openavb makes the bundle's OpenAVB the boot ROM, --rom apple Virtualization.framework's \
         AVPBooter (the machine's own patched copy when it has one), --rom <file> any other ROM. \
@@ -298,6 +304,8 @@ struct VPhoneVirtualMachineConfigCommand: ParsableCommand {
     var unlockAtStartup: String?
     @Option(name: .long, help: "Forward this Mac's location to the guest: on | off (default)")
     var syncHostLocation: String?
+    @Option(name: .long, help: "Hold the guest's CoreDevice tunnel open for Xcode and Instruments: on | off (default)")
+    var developerTunnel: String?
     @Option(name: .long, help: VPhoneBootROMOption.help)
     var rom: String?
     @Option(name: .long, help: VPhoneSEPROMOption.help)
@@ -308,6 +316,7 @@ struct VPhoneVirtualMachineConfigCommand: ParsableCommand {
         let edit = try networkEdit(vmName: name)
         let unlocks = try unlockAtStartup.map { try Self.parseSwitch($0, option: "--unlock-at-startup") }
         let syncsLocation = try syncHostLocation.map { try Self.parseSwitch($0, option: "--sync-host-location") }
+        let holdsTunnel = try developerTunnel.map { try Self.parseSwitch($0, option: "--developer-tunnel") }
         let updated = try VPhoneBundleOperations.updateConfig(
             bundleNamed: name,
             in: lib.library,
@@ -316,6 +325,7 @@ struct VPhoneVirtualMachineConfigCommand: ParsableCommand {
             networkEdit: edit,
             unlocksAtStartup: unlocks,
             syncsHostLocation: syncsLocation,
+            holdsDeveloperTunnel: holdsTunnel,
         )
         var current = updated
         if let rom {

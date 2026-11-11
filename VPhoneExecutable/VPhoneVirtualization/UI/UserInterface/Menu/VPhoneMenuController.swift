@@ -25,6 +25,11 @@ class VPhoneMenuController {
     var softwareKeyboardItem: NSMenuItem?
     var tvControlCenterItem: NSMenuItem?
     var tvRemoteItem: NSMenuItem?
+    var visionOSImmersionItem: NSMenuItem?
+    var visionOSImmersionChoices: [NSMenuItem] = []
+    lazy var visionOSImmersionModel = VPhoneVisionOSImmersionModel { [control] method, params in
+        _ = try await control.call(method, params: params)
+    }
     lazy var tvRemoteWindowController = VPhoneTVRemoteWindowController(control: control)
 
     /// An Apple TV guest has a TV button that opens Control Center when held.
@@ -50,6 +55,17 @@ class VPhoneMenuController {
     var unlockAtStartupItem: NSMenuItem?
     /// Saves the Sync Host Location setting to this machine's config.plist.
     var onHostLocationSyncChange: ((Bool) throws -> Void)?
+    /// Saves the developer tunnel setting to this machine's config.plist.
+    var onDeveloperTunnelChange: ((Bool) throws -> Void)?
+    var developerTunnelItem: NSMenuItem?
+    /// Nil in DFU and when the guest's UDID is unknown, which leaves the
+    /// item disabled.
+    var developerTunnel: VPhoneDeveloperTunnel? {
+        didSet {
+            developerTunnelItem?.state = developerTunnel?.isEnabled == true ? .on : .off
+            developerTunnelItem?.isEnabled = developerTunnel != nil
+        }
+    }
 
     var onSessionPressed: (() -> Void)?
     var onFilesPressed: (() -> Void)?
@@ -91,9 +107,13 @@ class VPhoneMenuController {
 
     var touchIDMenuItem: NSMenuItem?
     var trackpadGesturesItem: NSMenuItem?
+    var mouseCaptureItem: NSMenuItem?
+    lazy var externalDisplayWindow = VPhoneExternalDisplayWindowController(control: control)
     var locationProvider: VPhoneLocationProvider?
     var locationMenuItem: NSMenuItem?
     var locationPresetMenuItem: NSMenuItem?
+    var locationCustomMenuItem: NSMenuItem?
+    var locationWindowController: VPhoneLocationWindowController?
     var locationReplayStartItem: NSMenuItem?
     var locationReplayStopItem: NSMenuItem?
     var screenRecorder: VPhoneScreenRecorder?
@@ -103,8 +123,15 @@ class VPhoneMenuController {
     var cameraSourceOffItem: NSMenuItem?
     var cameraSourceTestPatternItem: NSMenuItem?
     var cameraSourceVideoFileItem: NSMenuItem?
+    var cameraSourceSystemCameraItem: NSMenuItem?
     var cameraStartStopItem: NSMenuItem?
-    weak var captureView: VPhoneVirtualMachineView?
+    weak var captureView: VPhoneVirtualMachineView? {
+        didSet {
+            captureView?.onMouseCaptureChange = { [weak self] captured in
+                self?.mouseCaptureItem?.state = captured ? .on : .off
+            }
+        }
+    }
     var batterySyncEnabled = false
     var batterySyncStatusItem: NSMenuItem?
     var batteryLevelMenuItems: [NSMenuItem] = []

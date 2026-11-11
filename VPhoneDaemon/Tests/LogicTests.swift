@@ -1,4 +1,6 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import MachO
 
 // MARK: - Harness
@@ -6,8 +8,9 @@ import MachO
 /// Checks the guest-independent parts of vphoned on the Mac: the service
 /// profile lists and bookkeeping, the first-boot settle verdict (data
 /// migration included), the device name rule, the pointer scroll
-/// parameters and the Irisin package a guest takes. `run-logic-tests.sh`
-/// builds this file with those sources.
+/// parameters, the Irisin package a guest takes and the MobileGestalt
+/// answers vphoned adds, and the screenshot crop, scale and encode.
+/// `run-logic-tests.sh` builds this file with those sources.
 nonisolated(unsafe) var failures = 0
 nonisolated(unsafe) var checks = 0
 
@@ -41,8 +44,80 @@ enum LogicTests {
         bootstrapPlatform()
         setupAssistantState()
         homeViewDistancePolicy()
+        locationServicesOffError()
+        mobileGestaltAnswers()
+        settingsValue()
+        screenshotSizing()
+        methodDispatch()
         print("\(checks) checks, \(failures) failures")
         exit(failures == 0 ? 0 : 1)
+    }
+
+    static func settingsValue() {
+        // Decoded the way the daemon gets its params; nil is no `value` at all.
+        func typedText(_ json: String?, _ type: String?) -> String? {
+            let body = json.map { "{\"value\":\($0)}" } ?? "{}"
+            guard let params = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],
+                  let result = GuestSettingsValue.typedText(params["value"], type: type)
+            else { return nil }
+            return "\(result.text)|\(result.type)"
+        }
+        expectEqual(typedText(nil, nil), nil, "no value")
+        expectEqual(typedText("null", nil), nil, "null")
+        expectEqual(typedText(nil, "string"), nil, "no value, type string")
+        expectEqual(typedText("null", "string"), nil, "null, type string")
+        expectEqual(typedText("5", "json"), nil, "number, type json")
+        expectEqual(typedText("\"x\"", "json"), nil, "string, type json")
+        expectEqual(typedText("true", nil), "1|bool")
+        expectEqual(typedText("5", nil), "5|float")
+        expectEqual(typedText("\"x\"", nil), "x|string")
+        expectEqual(typedText("[1]", nil), "[1]|json")
+        expectEqual(typedText("{\"a\":1}", nil), "{\"a\":1}|json")
+        expectEqual(typedText("true", "string"), "1|string")
+        expectEqual(typedText("5", "string"), "5|string")
+        expectEqual(typedText("\"x\"", "string"), "x|string")
+        expectEqual(typedText("[1]", "json"), "[1]|json")
+        expectEqual(typedText("{\"a\":1}", "json"), "{\"a\":1}|json")
+        expectEqual(typedText("\"\"", nil), "|string")
+        expectEqual(typedText("false", nil), "0|bool")
+        expectEqual(typedText("0", "float"), "0|float")
+        expectEqual(typedText("[]", nil), "[]|json")
+        expectEqual(typedText("{}", nil), "{}|json")
+        // A decoded 1 or 0 is also a Bool, as it always was here.
+        expectEqual(typedText("1", nil), "1|bool")
+        expectEqual(typedText("0", nil), "0|bool")
+    }
+
+    static func mobileGestaltAnswers() {
+        let answers = GuestMobileGestaltAnswers.alwaysOnDisplay
+        func cache(_ extra: [String: Any]) -> Data {
+            try! PropertyListSerialization.data(fromPropertyList: [
+                "CacheData": Data([1, 2, 3]), "CacheExtra": extra, "CacheUUID": "u", "CacheVersion": "24A446",
+            ], format: .binary, options: 0)
+        }
+        let original = cache(["ybGkijAwLTwevankfVzsDQ": Data(count: 16), "aoJSd/MXk7M40NgXTM6x+g": false])
+        guard case let .updated(data) = GuestMobileGestaltAnswers.answeringYes(answers, in: original) else {
+            expect(false, "a cache without the answers is updated")
+            return
+        }
+        let plist = try! PropertyListSerialization.propertyList(from: data, format: nil) as! [String: Any]
+        let extra = plist["CacheExtra"] as! [String: Any]
+        expectEqual(extra["2OOJf1VhaM7NxfRok3HbWQ"] as? Bool, true, "DeviceSupportsAlwaysOnDisplay")
+        expectEqual(extra["j8/Omm6s1lsmTDFsXjsBfA"] as? Bool, true, "DeviceSupportsAlwaysOnTime")
+        expectEqual(extra["aoJSd/MXk7M40NgXTM6x+g"] as? Bool, false, "the flipbook answer is left as it was")
+        expectEqual(extra["ybGkijAwLTwevankfVzsDQ"] as? Data, Data(count: 16), "other answers are kept")
+        expectEqual(plist["CacheData"] as? Data, Data([1, 2, 3]), "the computed answers are kept")
+        expectEqual(plist["CacheVersion"] as? String, "24A446")
+        expectEqual(GuestMobileGestaltAnswers.answeringYes(answers, in: data), .present, "a second pass changes nothing")
+        expectEqual(GuestMobileGestaltAnswers.answeringYes(answers, in: Data("half a fi".utf8)), .unreadable)
+        let noExtra = try! PropertyListSerialization.data(fromPropertyList: ["CacheVersion": "24A446"], format: .binary, options: 0)
+        expectEqual(GuestMobileGestaltAnswers.answeringYes(answers, in: noExtra), .unreadable, "a cache needs CacheExtra")
+    }
+
+    static func locationServicesOffError() {
+        let error = GuestAPIError.locationServicesOff
+        expectEqual(error.code, "location_services_off")
+        expect(error.description.contains("location.services {enabled:true}"), "the message names the RPC that turns Location Services on")
     }
 
     static func homeViewDistancePolicy() {
@@ -113,8 +188,8 @@ enum LogicTests {
 
     static func profileCatalog() {
         let groups = GuestServiceProfile.groups27
-        expectEqual(GuestServiceProfile.base27.count, 134, "appendix A less siriactionsd, passd and financed")
-        expectEqual(Set(GuestServiceProfile.base27).count, 134, "appendix A has no duplicates")
+        expectEqual(GuestServiceProfile.base27.count, 133, "appendix A less siriactionsd, passd, financed and generativeexperiencesd")
+        expectEqual(Set(GuestServiceProfile.base27).count, 133, "appendix A has no duplicates")
         let all = groups.flatMap(\.labels)
         expectEqual(Set(all).count, all.count, "no label is in two groups")
         for label in all + GuestServiceProfile.neverDisable {
@@ -132,7 +207,7 @@ enum LogicTests {
 
     static func profileCatalog26() {
         let base26 = GuestServiceProfile.base26
-        expectEqual(base26.count, 128, "134 minus six 26.6.2 does not load")
+        expectEqual(base26.count, 127, "133 minus six 26.6.2 does not load")
         expectEqual(Set(base26).count, base26.count, "no duplicates")
         expect(Set(base26).isSubset(of: GuestServiceProfile.base27), "26 adds no label of its own")
         expect(GuestServiceProfile.notLoadedOn26.isSubset(of: GuestServiceProfile.base27), "only 27 labels are left out")
@@ -154,33 +229,42 @@ enum LogicTests {
 
     static func profileSelection() {
         let trimmed = try? GuestServiceProfile.select(profile: "trimmed", iosMajor: 27)
-        expectEqual(trimmed?.labels.count, 138, "default trimmed = 134 + 2 store + 2 follow-up")
+        expectEqual(trimmed?.labels.count, 137, "default trimmed = 133 + 2 store + 2 follow-up")
         expectEqual(trimmed?.groups, ["base", "app_store", "signin_followup"])
         expect(trimmed?.labels.contains("com.apple.followupd") == true, "followupd is in trimmed")
         expect(trimmed?.labels.contains("com.apple.akd") == false, "akd is not in trimmed by default")
         expect(trimmed?.labels.contains("com.apple.siriactionsd") == false, "siriactionsd serves App Intents controls")
         expect(GuestServiceProfile.neverDisable.contains("com.apple.siriactionsd"), "siriactionsd is never disabled")
         expect(trimmed?.labels.contains("com.apple.passd") == false && trimmed?.labels.contains("com.apple.financed") == false, "Wallet's daemons stay")
+        expect(trimmed?.labels.contains("com.apple.generativeexperiencesd") == false, "BackgroundShortcutRunner spins without it")
+        if let labels = trimmed?.labels {
+            // A guest trimmed by list version 3 owns it; applying again turns it back on.
+            let v3 = labels + ["com.apple.generativeexperiencesd"]
+            let change = GuestServiceProfile.reconcile(
+                target: labels, owned: v3, overrides: Dictionary(uniqueKeysWithValues: v3.map { ($0, true) }),
+            )
+            expectEqual(change.enable, ["com.apple.generativeexperiencesd"], "list version 3 guests get it back")
+        }
         expectEqual(trimmed?.labels, trimmed?.labels.sorted(), "labels sorted")
 
         let accounts = try? GuestServiceProfile.select(profile: "trimmed", iosMajor: 27, extraGroups: ["accounts"])
-        expectEqual(accounts?.labels.count, 141, "accounts adds three")
+        expectEqual(accounts?.labels.count, 140, "accounts adds three")
         expect(accounts?.labels.contains("com.apple.amsaccountsd") == true, "amsaccountsd with accounts")
 
         let allowed = try? GuestServiceProfile.select(
             profile: "trimmed", iosMajor: 27, allow: ["com.apple.weatherd", "com.example.not-listed"],
         )
-        expectEqual(allowed?.labels.count, 137, "allow removes one")
+        expectEqual(allowed?.labels.count, 136, "allow removes one")
         expectEqual(allowed?.allowed, ["com.apple.weatherd"], "only catalog labels are reported as allowed")
         expect(allowed?.labels.contains("com.apple.weatherd") == false, "weatherd kept")
 
         let trimmed26 = try? GuestServiceProfile.select(profile: "trimmed", iosMajor: 26)
-        expectEqual(trimmed26?.labels.count, 132, "26 trimmed = 128 + 2 store + 2 follow-up")
+        expectEqual(trimmed26?.labels.count, 131, "26 trimmed = 127 + 2 store + 2 follow-up")
         expectEqual(trimmed26?.groups, ["base", "app_store", "signin_followup"])
         expect(trimmed26?.refused.isEmpty == true, "the 26 list names nothing never disabled")
         expectEqual(
             (try? GuestServiceProfile.select(profile: "trimmed", iosMajor: 26, extraGroups: ["accounts"]))?.labels.count,
-            135, "accounts adds three on 26",
+            134, "accounts adds three on 26",
         )
 
         expectEqual(try? GuestServiceProfile.select(profile: "none", iosMajor: 25), GuestServiceProfile.Selection())
@@ -212,8 +296,8 @@ enum LogicTests {
             expect(overlap.isEmpty, "\(group.name) names never-disabled \(overlap.sorted())")
         }
         for trap in [
-            "com.apple.sleepd", "com.apple.CommCenter", "com.apple.CommCenterMobileHelper",
-            "com.apple.CommCenterRootHelper", "com.apple.cloudd", "com.apple.nanoregistryd",
+            "com.apple.sleepd", "com.apple.generativeexperiencesd", "com.apple.CommCenter",
+            "com.apple.CommCenterMobileHelper", "com.apple.CommCenterRootHelper", "com.apple.cloudd", "com.apple.nanoregistryd",
             "com.apple.nanoregistrylaunchd", "com.apple.mobileassetd", "com.apple.storekitd",
             "com.apple.cfprefsd.xpc.daemon", "com.apple.SpringBoard", "com.apple.backboardd",
             "com.apple.mobile.installd", "com.apple.lsd", "com.apple.mobileactivationd",
@@ -275,7 +359,7 @@ enum LogicTests {
         var overrides = Dictionary(uniqueKeysWithValues: ota.map { ($0, true) })
         overrides["com.apple.user-choice"] = true
         let apply = GuestServiceProfile.reconcile(target: trimmed.labels, owned: [], overrides: overrides)
-        expectEqual(apply.disable.count, 135, "138 minus the three already disabled")
+        expectEqual(apply.disable.count, 134, "137 minus the three already disabled")
         expectEqual(apply.skipped.map(\.label), ota.sorted())
         let owned = GuestServiceProfile.owned(after: apply, failedDisable: [], failedEnable: [])
         for label in apply.disable {
@@ -427,6 +511,189 @@ enum LogicTests {
         }
     }
 
+    static func screenshotSizing() {
+        typealias Sizing = GuestScreenshotSizing
+        let pointSize = (width: 100.0, height: 50.0)
+
+        // 200x100 px, two per point: red top-left, green top-right, blue
+        // bottom-left, yellow bottom-right.
+        let colors: [(r: Double, g: Double, b: Double)] = [(1, 0, 0), (0, 1, 0), (0, 0, 1), (1, 1, 0)]
+        func jpeg(_ image: CGImage, quality: Double) -> Data {
+            let data = NSMutableData()
+            let destination = CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil)!
+            CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
+            _ = CGImageDestinationFinalize(destination)
+            return data as Data
+        }
+        let context = CGContext(data: nil, width: 200, height: 100, bitsPerComponent: 8, bytesPerRow: 0,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        for (index, color) in colors.enumerated() {
+            context.setFillColor(red: color.r, green: color.g, blue: color.b, alpha: 1)
+            // CoreGraphics counts y from the bottom.
+            context.fill(CGRect(x: (index % 2) * 100, y: index < 2 ? 50 : 0, width: 100, height: 50))
+        }
+        let original = jpeg(context.makeImage()!, quality: 1.0)
+
+        func isColor(_ data: Data, _ x: Int, _ y: Int, _ color: (r: Double, g: Double, b: Double)) -> Bool {
+            let image = CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithData(data as CFData, nil)!, 0, nil)!
+            let canvas = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                   space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                   bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+            canvas.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            let bytes = canvas.data!.assumingMemoryBound(to: UInt8.self) + y * canvas.bytesPerRow + x * 4
+            return abs(Int(bytes[0]) - Int(color.r * 255)) < 40 && abs(Int(bytes[1]) - Int(color.g * 255)) < 40
+                && abs(Int(bytes[2]) - Int(color.b * 255)) < 40
+        }
+        func region(_ x: Double, _ y: Double, _ width: Double, _ height: Double) -> [String: Any] {
+            ["x": x, "y": y, "width": width, "height": height]
+        }
+        func run(_ params: [String: Any]) -> (jpeg: Data, width: Int, height: Int, region: Sizing.Region)? {
+            guard let options = try? Sizing.parse(params) else { return nil }
+            return try? Sizing.apply(options, jpeg: original, pointSize: pointSize)
+        }
+        func parseError(_ params: [String: Any]) -> GuestAPIError? {
+            do { _ = try Sizing.parse(params) } catch let error as GuestAPIError { return error } catch {}
+            return nil
+        }
+        func applyError(_ params: [String: Any], _ data: Data? = nil) -> GuestAPIError? {
+            do { _ = try Sizing.apply(Sizing.parse(params), jpeg: data ?? original, pointSize: pointSize) }
+            catch let error as GuestAPIError { return error } catch {}
+            return nil
+        }
+
+        // no params: nothing to do, so the daemon never decodes
+        expect((try? Sizing.parse([:]))?.isEmpty == true, "no param is an empty option set")
+        expect((try? Sizing.parse(["quality": 0.5]))?.isEmpty == false, "quality alone is not empty")
+
+        // crop alone: the bottom-right quarter
+        let crop = run(["region": region(50, 25, 50, 25)])
+        expectEqual(crop.map { [$0.width, $0.height] } ?? [], [100, 50], "crop size")
+        expectEqual(crop?.region, Sizing.Region(x: 50, y: 25, width: 50, height: 25), "crop reports the requested region")
+        expect(crop.map { isColor($0.jpeg, 50, 25, colors[3]) && isColor($0.jpeg, 2, 2, colors[3]) } ?? false, "crop shows yellow")
+
+        // a fractional region rounds each edge to whole pixels
+        let fractional = run(["region": region(10.3, 5.2, 20.4, 10.1)])
+        expectEqual(fractional.map { [$0.width, $0.height] } ?? [], [40, 21], "edge-rounded crop size")
+
+        // scale alone
+        let scaled = run(["max_dimension": 100])
+        expectEqual(scaled.map { [$0.width, $0.height] } ?? [], [100, 50], "scale keeps the aspect ratio")
+        expectEqual(scaled?.region, Sizing.Region(x: 0, y: 0, width: 100, height: 50), "no region is the full screen")
+        expect(scaled.map { isColor($0.jpeg, 10, 10, colors[0]) && isColor($0.jpeg, 90, 40, colors[3]) } ?? false, "scale keeps the quadrants")
+        expectEqual(run(["max_dimension": 5000]).map { [$0.width, $0.height] } ?? [], [200, 100], "never scales up")
+        expectEqual(run(["max_dimension": 200])?.width, 200, "at the longer side is unchanged")
+
+        // both: the crop is scaled
+        let both = run(["region": region(0, 0, 50, 25), "max_dimension": 50])
+        expectEqual(both.map { [$0.width, $0.height] } ?? [], [50, 25], "crop then scale")
+        expect(both.map { isColor($0.jpeg, 25, 12, colors[0]) } ?? false, "crop then scale shows red")
+
+        // quality changes the byte size, not the image size
+        let low = run(["quality": 0.5])
+        let high = run(["quality": 0.9])
+        expect((low?.jpeg.count ?? Int.max) < (high?.jpeg.count ?? 0), "quality 0.5 is smaller than quality 0.9")
+        let cropExplicit = run(["region": region(50, 25, 50, 25), "quality": 0.8])
+        expect(crop != nil && crop?.jpeg == cropExplicit?.jpeg, "a crop without quality encodes at 0.8")
+        let scaleExplicit = run(["max_dimension": 100, "quality": 0.8])
+        expect(scaled != nil && scaled?.jpeg == scaleExplicit?.jpeg, "a scale without quality encodes at 0.8")
+        expectEqual(low.map { [$0.width, $0.height] } ?? [], [200, 100], "quality alone keeps the size")
+
+        // the coordinate mapping: pixel (px, py) is point (x + px / scale, y + py / scale)
+        // a crop across the red/green edge (point 50) puts the edge at (50 - region.x) * scale
+        for maxDimension in [nil, 20] as [Int?] {
+            var params: [String: Any] = ["region": region(40, 0, 20, 25)]
+            if let maxDimension { params["max_dimension"] = maxDimension }
+            guard let edge = run(params) else { expect(false, "the edge crop ran"); continue }
+            let scale = Double(edge.width) / edge.region.width
+            let expected = (50 - edge.region.x) * scale
+            let row = edge.height / 4
+            let boundary = (0 ..< edge.width).first { !isColor(edge.jpeg, $0, row, colors[0]) } ?? -1
+            expect(abs(Double(boundary) - expected) <= 1, "the red/green edge is at pixel \(boundary), expected \(expected)")
+        }
+
+        let tiny = run(["max_dimension": 1])
+        expectEqual(tiny.map { [$0.width, $0.height] } ?? [], [1, 1], "max_dimension 1 on a 2:1 image")
+        if let tiny {
+            let scale = Double(tiny.width) / tiny.region.width
+            expectEqual(scale, 0.01, "1 pixel over 100 points")
+            expectEqual(tiny.region.x + 1 / scale, 100, "the pixel's far edge is the screen's")
+        }
+
+        // the reply: empty options keep the image bytes and add the point keys
+        let capture: [String: Any] = ["bytes": original.count, "mime_type": "image/jpeg", "width": 200, "height": 100,
+                                      "coordinate_scale": 2.0, "data": original.base64EncodedString(),
+                                      "jpeg": original]
+        func reply(_ params: [String: Any], _ input: [String: Any]) -> [String: Any]? {
+            guard let options = try? Sizing.parse(params) else { return nil }
+            return try? Sizing.reply(capture: input, options: options, pointSize: pointSize)
+        }
+        if let plain = reply([:], capture) {
+            expect(plain["data"] as? String == original.base64EncodedString(), "empty options leave the data identical")
+            expectEqual(plain["bytes"] as? Int, original.count, "empty options leave bytes identical")
+            expectEqual(plain["point_width"] as? Double, 100, "empty options add point_width")
+            expectEqual(plain["point_height"] as? Double, 50, "empty options add point_height")
+            expectEqual((plain["region"] as? [String: Double])?["width"], 100, "empty options add the full-screen region")
+        } else {
+            expect(false, "the empty-options reply ran")
+        }
+        // pinned replies on the 200x100 px, 100x50 pt fixture: width, height, region, pixels per point
+        let sizedCases: [(params: [String: Any], width: Int, height: Int, region: [String: Double], scale: Double)] = [
+            (["quality": 0.5], 200, 100, ["x": 0, "y": 0, "width": 100, "height": 50], 2),
+            (["region": region(50, 25, 50, 25)], 100, 50, ["x": 50, "y": 25, "width": 50, "height": 25], 2),
+            (["max_dimension": 100], 100, 50, ["x": 0, "y": 0, "width": 100, "height": 50], 1),
+            // 40x21 px crop scaled to 30 wide: 21 * 30 / 40 rounds to 16
+            (["region": region(10.3, 5.2, 20.4, 10.1), "max_dimension": 30], 30, 16,
+             ["x": 10.3, "y": 5.2, "width": 20.4, "height": 10.1], 30 / 20.4),
+        ]
+        for testCase in sizedCases {
+            let label = "\(testCase.params)"
+            guard let out = reply(testCase.params, capture) else { expect(false, "reply ran for \(label)"); continue }
+            expectEqual(out["width"] as? Int, testCase.width, "\(label) width")
+            expectEqual(out["height"] as? Int, testCase.height, "\(label) height")
+            expectEqual(out["point_width"] as? Double, 100, "\(label) point_width")
+            expectEqual(out["point_height"] as? Double, 50, "\(label) point_height")
+            expectEqual(out["region"] as? [String: Double], testCase.region, "\(label) region")
+            expectEqual(out["coordinate_scale"] as? Double, testCase.scale, "\(label) coordinate_scale")
+        }
+
+        // one-past-bound rejections: the code, and a message naming param, value and range
+        func rejected(_ error: GuestAPIError?, _ parts: [String], _ label: String, line: Int = #line) {
+            guard let error else { expect(false, "\(label) is rejected", line: line); return }
+            expectEqual(error.code, "invalid_operation", label, line: line)
+            guard case .invalidRequest = error else { expect(false, "\(label) is invalidRequest", line: line); return }
+            for part in parts {
+                expect(error.description.contains(part), "\(label): \"\(error.description)\" names \(part)", line: line)
+            }
+        }
+        rejected(parseError(["max_dimension": 0]), ["max_dimension", "0", "1 or more"], "max_dimension 0")
+        rejected(parseError(["max_dimension": 1.5]), ["max_dimension", "1.5"], "max_dimension fraction")
+        rejected(parseError(["max_dimension": "9"]), ["max_dimension", "9"], "max_dimension text")
+        rejected(parseError(["quality": 0.09]), ["quality", "0.09", "0.1 to 1.0"], "quality 0.09")
+        rejected(parseError(["quality": 1.01]), ["quality", "1.01", "0.1 to 1.0"], "quality 1.01")
+        rejected(parseError(["quality": true]), ["quality", "true"], "quality boolean")
+        rejected(parseError(["region": region(0, 0, 0, 10)]), ["region.width", "0", "above 0"], "width 0")
+        rejected(parseError(["region": region(0, 0, 10, -1)]), ["region.height", "-1", "above 0"], "height -1")
+        rejected(parseError(["region": region(-1, 0, 10, 10)]), ["region.x", "-1", "0 or more"], "x -1")
+        rejected(parseError(["region": region(0, -1, 10, 10)]), ["region.y", "-1", "0 or more"], "y -1")
+        rejected(parseError(["region": ["x": 0, "y": 0, "width": 10]]), ["region.height", "missing"], "missing field")
+        rejected(parseError(["region": ["x": 0, "y": 0, "width": 10, "height": "ten"]]), ["region.height", "ten"], "non-numeric field")
+        rejected(parseError(["region": "all"]), ["region", "all"], "region not an object")
+        rejected(applyError(["region": region(50, 0, 50.1, 10)]), ["x + width", "100.1", "at most 100"], "x + width one past the edge")
+        rejected(applyError(["region": region(0, 40, 10, 10.5)]), ["y + height", "50.5", "at most 50"], "y + height past the edge")
+        rejected(applyError(["region": region(10, 10, 0.1, 10)]), ["region.width", "0.1", "at least 0.5"], "0.1-point region")
+        expect(applyError(["region": region(0, 0, 100, 50)]) == nil, "the whole screen is inside")
+
+        // an image that does not decode fails the operation, never succeeds
+        if let error = applyError(["quality": 0.5], Data("not a jpeg".utf8)) {
+            expectEqual(error.code, "invalid_operation")
+            if case .operationFailed = error {} else { expect(false, "non-JPEG is operationFailed") }
+            expect(error.description.contains("decode"), "the message names the decode step: \(error.description)")
+        } else {
+            expect(false, "non-JPEG bytes are rejected")
+        }
+    }
+
     static func pointerScroll() {
         typealias Scroll = GuestPointerScroll.Scroll
         expectEqual(try? GuestPointerScroll.scroll(["phase": "changed", "dx": 1.5, "dy": -20]),
@@ -480,5 +747,159 @@ enum LogicTests {
         expect(!GuestBootstrapPlatform.packageRequiresApp(architecture: "appletvos-arm64e"), "the Apple TV package has none")
         expectEqual(GuestBootstrapPlatform.mainExecutablePlatform(), UInt32(PLATFORM_MACOS), "this test runs as macOS")
         expect(!GuestBootstrapPlatform.isTVOS, "the Mac is not tvOS")
+
+        // Irisin 5.1.4's roothide list
+        let roothide: [[String: Any]] = [
+            ["source": "deb https://roothide.github.io/procursus iphoneos-arm64e/1800 main", "maximumSystemVersion": 15],
+            ["source": "deb https://stripe.owngoal.dev 1900 main", "minimumSystemVersion": 16],
+            ["source": "https://apt.owngoal.dev"],
+        ]
+        let sources = GuestBootstrapPlatform.recommendedSources
+        expectEqual(sources([], roothide, 27), ["deb https://stripe.owngoal.dev 1900 main", "https://apt.owngoal.dev"])
+        expectEqual(sources(nil, roothide, 15), ["deb https://roothide.github.io/procursus iphoneos-arm64e/1800 main", "https://apt.owngoal.dev"])
+        expectEqual(sources([["source": "https://repo.example"]], roothide, 27), ["https://repo.example"], "a managed list with entries wins")
+        expectEqual(sources(nil, nil, 27), [], "no list recommends nothing")
+    }
+
+    // MARK: Method dispatch
+
+    enum FixtureMethod: String, GuestMethod {
+        case echo = "fixture.echo"
+        case always = "fixture.always"
+        case when = "fixture.when"
+        case varies = "fixture.varies"
+        case declared = "fixture.declared"
+        case empty = "fixture.empty"
+
+        var spec: MethodSpec {
+            switch self {
+            case .echo: MethodSpec(.required("a", .string, "Input"), .optional("b", .integer, "Count"), summary: "Echo fixture.")
+            case .always:
+                MethodSpec(.required("a", .string, "Input"), summary: "Act on fixture.", force: .always("act on <a>") { p in
+                    guard let a = p["a"] as? String, !a.isEmpty else { throw GuestAPIError.invalidRequest("a is required") }
+                    return "act on \(a)"
+                })
+            case .when: MethodSpec(.optional("kill", .boolean, "Kill fixture"), summary: "Stop fixture.", force: .when("kill", "kill fixture") { _ in "kill fixture" })
+            case .varies:
+                MethodSpec(.optional("userspace", .boolean, "Restart userspace only"), summary: "Restart fixture.", force: .always("restart fixture userspace or reboot fixture") { p in
+                    GuestMethodArea.flag(p, "userspace") ? "restart fixture userspace" : "reboot fixture"
+                })
+            case .declared:
+                MethodSpec(.required("a", .string, "Input"), summary: "Declared result fixture.", result: [
+                    .optional("z", .boolean), .required("x", .integer), .hidden("y", .string), .required("e", .object).open(),
+                ])
+            case .empty: MethodSpec(summary: "Empty fixture.", result: [])
+            }
+        }
+    }
+
+    nonisolated(unsafe) static var specCount = 0
+
+    enum CountedMethod: String, GuestMethod {
+        case one = "counted.one"
+        case two = "counted.two"
+
+        var spec: MethodSpec {
+            LogicTests.specCount += 1
+            return MethodSpec(summary: "Counted fixture.")
+        }
+    }
+
+    static func json(_ value: [String: Any]?) -> String {
+        guard let value, let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
+    }
+
+    static func methodDispatch() {
+        let area = GuestMethodArea.make(FixtureMethod.self) { _, params in params }
+        func run(_ method: String, _ params: [String: Any]) -> (result: [String: Any]?, error: String?, code: String?) {
+            do { return (try area.execute(method, params), nil, nil) } catch let error as GuestAPIError {
+                return (nil, String(describing: error), error.code)
+            } catch { return (nil, "\(error)", nil) }
+        }
+
+        expect(run("other", [:]).result == nil && run("other", [:]).error == nil, "an unknown name is not this area's")
+        expectEqual(json(run("fixture.echo", ["a": "x", "b": 1, "z": 9]).result), json(["a": "x", "b": 1]), "undeclared keys are dropped")
+        expectEqual(json(run("fixture.echo", ["z": 9]).result), "{}", "no declared key leaves nothing")
+
+        let refusal = "Pass force: true to act on x"
+        let refused = run("fixture.always", ["a": "x"])
+        expectEqual(refused.error ?? "", refusal)
+        expectEqual(refused.code ?? "", "invalid_operation")
+        expectEqual(run("fixture.always", ["a": "x", "force": false]).error ?? "", refusal)
+        expectEqual(run("fixture.always", ["a": "x", "force": "yes"]).error ?? "", refusal)
+        expectEqual(json(run("fixture.always", ["a": "x", "force": true]).result), json(["a": "x"]), "force: true admits")
+        expectEqual(json(run("fixture.always", ["a": "x", "force": 1]).result), json(["a": "x"]), "force: 1 admits")
+        expectEqual(run("fixture.always", [:]).error ?? "", "a is required", "invalid and unforced fails validation first")
+
+        expectEqual(run("fixture.varies", [:]).error ?? "", "Pass force: true to reboot fixture")
+        expectEqual(run("fixture.varies", ["userspace": true]).error ?? "", "Pass force: true to restart fixture userspace", "the action text follows the params")
+        expectEqual(json(run("fixture.varies", ["userspace": true, "force": true]).result), json(["userspace": true]), "forced action runs")
+
+        expectEqual(json(run("fixture.when", ["kill": false]).result), json(["kill": false]), "kill: false needs no force")
+        expectEqual(json(run("fixture.when", [:]).result), "{}", "no kill needs no force")
+        expectEqual(run("fixture.when", ["kill": true]).error ?? "", "Pass force: true to kill fixture")
+        expectEqual(json(run("fixture.when", ["kill": true, "force": true]).result), json(["kill": true]), "forced kill admits")
+
+        // ResultKey storage: undeclared is nil, declared empty is []
+        expect(FixtureMethod.echo.spec.result == nil, "no result: reads back nil")
+        expectEqual(FixtureMethod.empty.spec.result?.count ?? -1, 0, "result: [] reads back empty")
+
+        let catalog = GuestMethodArea.catalog([area])
+        let expected: [String: Any] = ["methods": [
+            ["name": "fixture.echo", "description": "Echo fixture.", "params": [
+                ["name": "a", "description": "Input", "type": "string", "required": true],
+                ["name": "b", "description": "Count", "type": "integer", "required": false],
+            ], "force": "never"],
+            ["name": "fixture.always", "description": "Act on fixture.", "force_action": "act on <a>", "params": [["name": "a", "description": "Input", "type": "string", "required": true]], "force": "always"],
+            ["name": "fixture.when", "description": "Stop fixture.", "force_action": "kill fixture", "params": [["name": "kill", "description": "Kill fixture", "type": "boolean", "required": false]], "force": "when:kill"],
+            ["name": "fixture.varies", "description": "Restart fixture.", "force_action": "restart fixture userspace or reboot fixture", "params": [["name": "userspace", "description": "Restart userspace only", "type": "boolean", "required": false]], "force": "always"],
+            ["name": "fixture.declared", "description": "Declared result fixture.", "params": [["name": "a", "description": "Input", "type": "string", "required": true]], "force": "never", "result": [
+                ["name": "e", "type": "object", "required": true, "open": true],
+                ["name": "x", "type": "integer", "required": true, "open": false],
+                ["name": "z", "type": "boolean", "required": false, "open": false],
+            ]],
+            ["name": "fixture.empty", "description": "Empty fixture.", "params": [] as [[String: Any]], "force": "never", "result": [] as [[String: Any]]],
+        ]]
+        expectEqual(json(catalog), json(expected), "catalog")
+
+        // catalog and dispatcher agree
+        let listed = (catalog["methods"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+        let dispatched = FixtureMethod.allCases.map(\.rawValue).filter { (try? area.execute($0, ["a": "x", "force": true])) != nil }
+        expectEqual(listed, dispatched, "catalog names equal dispatched names")
+        expectEqual(Set(listed).count, listed.count, "catalog names are unique")
+
+        // specs are built lazily
+        let counted = GuestMethodArea.make(CountedMethod.self) { _, params in params }
+        specCount = 0
+        for _ in 0 ..< 1000 { _ = try? counted.execute("other", [:]) }
+        expectEqual(specCount, 0, "no spec is built for a foreign name")
+        for _ in 0 ..< 1000 { _ = try? counted.execute("counted.one", [:]) }
+        expectEqual(specCount, 1000, "one spec per dispatch")
+        _ = GuestMethodArea.catalog([counted])
+        expectEqual(specCount, 1002, "catalog builds each spec once")
+
+        // methods.list reaches the dispatch through the same walk GuestAPI.execute uses
+        enum FixtureCore: String, GuestMethod {
+            case methodsList = "methods.list"
+            var spec: MethodSpec { MethodSpec(summary: "Counted fixture.") }
+        }
+        nonisolated(unsafe) var table: [GuestMethodArea] = []
+        table = [
+            .make(FixtureCore.self) { _, _ in GuestMethodArea.catalog(table) },
+            GuestMethodArea.make(FixtureMethod.self) { _, params in params },
+        ]
+        func call(_ params: [String: Any]) -> [String: Any]? {
+            try? GuestMethodArea.dispatch(table, method: "methods.list", params: params)
+        }
+        let answer = call([:])
+        let names = (answer?["methods"] as? [[String: Any]] ?? []).compactMap { $0["name"] as? String }
+        expect(names.contains("methods.list") && names.contains("fixture.echo"), "methods.list lists itself and the other areas")
+        expectEqual(json(call(["x": 1])), json(answer), "methods.list ignores params")
+        expectEqual(json(call([:])), json(answer), "two calls are byte-identical")
+        expect(json(answer).utf8.count < 1 << 20, "the answer is far below the 1 MiB body limit")
+        var unknown = ""
+        do { _ = try GuestMethodArea.dispatch(table, method: "nope.nothing", params: [:]) } catch { unknown = String(describing: error) }
+        expectEqual(unknown, "Unknown method: nope.nothing", "no area answering is an unknown method")
     }
 }

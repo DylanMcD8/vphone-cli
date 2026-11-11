@@ -18,6 +18,27 @@ import VPhonePatchKit
 
 @Suite("CustomFirmwareVirtualAudio")
 struct CustomFirmwareVirtualAudioTests {
+    @Test(arguments: [Self.junk, Data()])
+    func `inactive protection bypass refuses an invalid binary`(_ input: Data) {
+        var data = input
+        #expect(throws: PatcherError.self) {
+            try CustomFirmwareVirtualAudio.patchInactiveSpeakerProtection(
+                &data, reattest: false, log: nil,
+            )
+        }
+        #expect(data == input)
+    }
+
+    @Test
+    func `the inactive-protection anchor strings and record identity are stable`() {
+        #expect(CustomFirmwareVirtualAudio.terminateFault == "Speaker Protection is not active on speaker route")
+        #expect(
+            CustomFirmwareVirtualAudio.patchID + ".inactive_protection"
+                == "system-virtualaudio-cfw-speaker_route_throws.inactive_protection",
+        )
+        #expect(CustomFirmwareVirtualAudio.component == "virtualaudio")
+    }
+
     /// Not a Mach-O at all.
     static let junk = Data(repeating: 0x41, count: 4096)
 
@@ -298,6 +319,33 @@ struct CustomFirmwareVirtualAudioTests {
                 in: data, disasm: ARM64Disassembler(), after: 0x8, prologue: 0, textEnd: data.count,
             )
         }
+    }
+
+    /// iOS 27.2's mute-set throw (iPhone19,4 24B91020, 0x104630 … 0x104660):
+    /// `__cxa_allocate_exception`, `mov x20, x0`, `mov x1, x21`, the
+    /// `std::system_error` constructor called on the object, its typeinfo and
+    /// destructor, `mov x0, x20`, `__cxa_throw`, `brk`. Nothing is stored into
+    /// the object; the constructor builds it.
+    static let systemErrorThrow: [UInt32] = [
+        0x9411_AA70, 0xAA00_03F4, 0xAA15_03E1, 0x9403_A8E2, 0x9000_31A1, 0x911D_8021,
+        0xB000_3310, 0xF947_B610, 0xDAC1_23F0, 0xAA10_03E2, 0xAA14_03E0, 0x9411_AA89,
+        0xD420_0020,
+    ]
+
+    @Test
+    func `a throw whose exception a constructor builds is a throw block`() {
+        let data = Self.systemErrorThrow.reduce(into: Data()) { $0 += ARM64.encodeU32($1) }
+        #expect(CustomFirmwareVirtualAudio.isCAExceptionThrowBlock(
+            in: data, disasm: ARM64Disassembler(), from: 0, to: data.count,
+        ))
+        // The same calls with x0 replaced before the first (`mov x0, x21`):
+        // that call is not made on the object, so nothing builds it.
+        var words = Self.systemErrorThrow
+        words[2] = 0xAA15_03E0
+        let other = words.reduce(into: Data()) { $0 += ARM64.encodeU32($1) }
+        #expect(!CustomFirmwareVirtualAudio.isCAExceptionThrowBlock(
+            in: other, disasm: ARM64Disassembler(), from: 0, to: other.count,
+        ))
     }
 
     // MARK: - Device-state null gate
